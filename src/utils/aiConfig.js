@@ -1,0 +1,34 @@
+export const DEFAULT_AI_CONFIG = {
+  baseURL: 'https://api.deepseek.com/v1',
+  model: 'deepseek-chat',
+  apiKey: '',
+}
+
+export const AI_CONFIG_STORAGE_KEY = 'flux_ai_config'
+
+export function readAiConfig() {
+  if (typeof window === 'undefined') return DEFAULT_AI_CONFIG
+
+  try {
+    const raw = window.localStorage.getItem(AI_CONFIG_STORAGE_KEY)
+    if (!raw) return DEFAULT_AI_CONFIG
+
+    const parsed = JSON.parse(raw)
+    return {
+      baseURL: typeof parsed?.baseURL === 'string' ? parsed.baseURL : DEFAULT_AI_CONFIG.baseURL,
+      model: typeof parsed?.model === 'string' ? parsed.model : DEFAULT_AI_CONFIG.model,
+      apiKey: typeof parsed?.apiKey === 'string' ? parsed.apiKey : DEFAULT_AI_CONFIG.apiKey,
+    }
+  } catch {
+    return DEFAULT_AI_CONFIG
+  }
+}
+
+export function saveAiConfig(config) {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(AI_CONFIG_STORAGE_KEY, JSON.stringify(config))
+}
+
+export function resolveChatCompletionsUrl(baseURL) {
+  return `${(baseURL || DEFAULT_AI_CONFIG.baseURL).trim().replace(/\/$/, '')}/chat/completions`
+}
