@@ -1,7 +1,7 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useCallback } from 'react'
-import { Clock3, LoaderCircle, Orbit, Plus, RotateCcw, Sparkles, X } from 'lucide-react'
+import { Clock3, GitMerge, LoaderCircle, Orbit, Plus, Sparkles, X } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { AssimilationDiffPanel } from '../components/assimilation/AssimilationDiffPanel'
 import { EditorToolbar, FluxEditor } from '../components/editor/FluxEditor'
@@ -86,6 +86,12 @@ function formatRevisionTime(value) {
   }).format(date)
 }
 
+function getRevisionLabel(revision) {
+  if (revision?.kind === 'restore') return '恢复记录'
+  if (revision?.kind === 'rollback') return '撤回记录'
+  return '笔记更新'
+}
+
 export function EditorPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -106,9 +112,8 @@ export function EditorPage() {
   const addBlock = useFluxStore((state) => state.addBlock)
   const activePoolContext = useFluxStore((state) => state.activePoolContext)
   const peekBlockId = useFluxStore((state) => state.peekBlockId)
-  const recentAssimilationRevisions = useFluxStore((state) => state.recentAssimilationRevisions)
   const recordPoolEvent = useFluxStore((state) => state.recordPoolEvent)
-  const rollbackAssimilationRevision = useFluxStore((state) => state.rollbackAssimilationRevision)
+  const restoreBlockRevision = useFluxStore((state) => state.restoreBlockRevision)
   const setPeekBlockId = useFluxStore((state) => state.setPeekBlockId)
   const updateBlock = useFluxStore((state) => state.updateBlock)
 
@@ -130,13 +135,12 @@ export function EditorPage() {
     [peekBlock?.dimensions],
   )
   const peekBlockRevisions = useMemo(
-    () =>
-      peekBlock
-        ? recentAssimilationRevisions.filter((revision) => revision.blockId === peekBlock.id).slice(0, 6)
-        : [],
-    [peekBlock, recentAssimilationRevisions],
+    () => (peekBlock?.revisions ?? []).slice(0, 5),
+    [peekBlock?.revisions],
   )
   const activeDocumentKey = blockId ?? 'new'
+  const activeEditorBlockId = blockId ?? pendingCreatedIdRef.current ?? null
+  const activeEditorBlockTitle = title.trim() || block?.title || ''
   const noteBadge = block?.id ? block.id.replace('block_', '').slice(-6) : 'new'
   const [selectedRevisionId, setSelectedRevisionId] = useState(null)
   const selectedRevision = useMemo(
@@ -145,6 +149,16 @@ export function EditorPage() {
       ?? peekBlockRevisions[0]
       ?? null,
     [peekBlockRevisions, selectedRevisionId],
+  )
+  const selectedRevisionSourceBlock = useMemo(
+    () =>
+      selectedRevision?.sourceBlockId
+        ? fluxBlocks.find((item) => item.id === selectedRevision.sourceBlockId) ?? null
+        : null,
+    [fluxBlocks, selectedRevision?.sourceBlockId],
+  )
+  const isSelectedRevisionCurrent = Boolean(
+    peekBlock && selectedRevision && (peekBlock.content ?? '') === (selectedRevision.afterContent ?? ''),
   )
 
   useEffect(
@@ -373,19 +387,26 @@ export function EditorPage() {
     }
   }
 
-  const handleRollbackFromDrawer = () => {
-    if (!selectedRevision || selectedRevision.rolledBackAt) return
+  const handleRestoreFromDrawer = () => {
+    if (!peekBlock || !selectedRevision || isSelectedRevisionCurrent) return
 
-    rollbackAssimilationRevision(selectedRevision.id)
+    const confirmed = window.confirm(
+      `确认将《${peekBlock.title || '当前笔记'}》恢复到 ${formatRevisionTime(selectedRevision.createdAt)} 的版本吗？`,
+    )
+    if (!confirmed) return
 
-    if (selectedRevision.poolContextKey) {
+    const restoredRevision = restoreBlockRevision(peekBlock.id, selectedRevision.id)
+    if (!restoredRevision) return
+    setSelectedRevisionId(restoredRevision.id)
+
+    if (restoredRevision.poolContextKey) {
       recordPoolEvent({
-        blockId: selectedRevision.blockId,
-        blockTitle: selectedRevision.blockTitle,
-        message: '已从抽屉撤销最近一次同化',
-        poolContextKey: selectedRevision.poolContextKey,
-        poolId: selectedRevision.poolId,
-        poolName: selectedRevision.poolName,
+        blockId: restoredRevision.blockId,
+        blockTitle: restoredRevision.blockTitle,
+        message: '已恢复至历史版本',
+        poolContextKey: restoredRevision.poolContextKey,
+        poolId: restoredRevision.poolId,
+        poolName: restoredRevision.poolName,
         type: 'rollback',
       })
     }
@@ -547,6 +568,8 @@ export function EditorPage() {
           documentKey={activeDocumentKey}
           initialContent={block?.content ?? content}
           onEditorReady={setEditorInstance}
+          sourceBlockId={activeEditorBlockId}
+          sourceBlockTitle={activeEditorBlockTitle}
           onChange={(nextValue) => {
             setContent(nextValue.html)
           }}
@@ -603,19 +626,19 @@ export function EditorPage() {
               <div className="mt-6 rounded-3xl border border-zinc-200/80 bg-zinc-50/80 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-400">Assimilation Trail</div>
+                    <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-400">Version History</div>
                     <div className="mt-1 text-sm font-medium text-zinc-900">
-                      最近 {peekBlockRevisions.length} 次同化回看
+                      最近 {peekBlockRevisions.length} 次版本回看
                     </div>
                   </div>
-                  {selectedRevision && !selectedRevision.rolledBackAt ? (
+                  {selectedRevision ? (
                     <button
                       type="button"
-                      onClick={handleRollbackFromDrawer}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-[11px] font-medium text-zinc-600 transition hover:border-zinc-300 hover:bg-zinc-100"
+                      onClick={handleRestoreFromDrawer}
+                      disabled={isSelectedRevisionCurrent}
+                      className="rounded-md bg-zinc-800 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-45"
                     >
-                      <RotateCcw className="h-3.5 w-3.5" />
-                      撤销当前记录
+                      恢复此版本
                     </button>
                   ) : null}
                 </div>
@@ -641,17 +664,20 @@ export function EditorPage() {
                   <div className="mt-4 space-y-4">
                     <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
                       <span className="inline-flex items-center gap-1 rounded-full border border-zinc-200 bg-white px-2.5 py-1">
-                        <Clock3 className="h-3.5 w-3.5" />
+                        <Clock3 size={12} />
                         {formatRevisionTime(selectedRevision.createdAt)}
                       </span>
                       <span
                         className={`rounded-full border px-2.5 py-1 font-medium ${
-                          selectedRevision.rolledBackAt
-                            ? 'border-amber-200 bg-amber-50 text-amber-700'
-                            : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                          isSelectedRevisionCurrent
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                            : 'border-zinc-200 bg-white text-zinc-600'
                         }`}
                       >
-                        {selectedRevision.rolledBackAt ? '已撤销' : '仍在生效'}
+                        {isSelectedRevisionCurrent ? '当前版本' : '历史版本'}
+                      </span>
+                      <span className="rounded-full border border-zinc-200 bg-white px-2.5 py-1">
+                        {getRevisionLabel(selectedRevision)}
                       </span>
                       {selectedRevision.poolName ? (
                         <span className="rounded-full border border-zinc-200 bg-white px-2.5 py-1">
@@ -660,9 +686,22 @@ export function EditorPage() {
                       ) : null}
                     </div>
 
+                    {selectedRevision?.sourceBlockId ? (
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/write?id=${selectedRevision.sourceBlockId}`)}
+                        className="mt-1.5 inline-flex cursor-pointer items-center gap-1.5 rounded border border-zinc-200/60 bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-500 transition-colors hover:bg-zinc-200/50"
+                      >
+                        <GitMerge size={10} className="text-zinc-400" />
+                        <span>{`灵感来源: ${selectedRevisionSourceBlock?.title || selectedRevision.sourceBlockTitle}`}</span>
+                      </button>
+                    ) : null}
+
                     {selectedRevision.contextParagraph ? (
                       <div className="rounded-2xl border border-indigo-100 bg-indigo-50/70 px-4 py-3">
-                        <div className="text-[11px] uppercase tracking-[0.18em] text-indigo-500">触发段落</div>
+                        <div className="text-[11px] uppercase tracking-[0.18em] text-indigo-500">
+                          {selectedRevision.kind === 'assimilation' ? '更新依据' : '恢复参照'}
+                        </div>
                         <p className="mt-2 text-sm leading-6 text-indigo-900">
                           {selectedRevision.contextParagraph}
                         </p>
@@ -672,8 +711,8 @@ export function EditorPage() {
                     <AssimilationDiffPanel
                       beforeContent={selectedRevision.beforeContent}
                       afterContent={selectedRevision.afterContent}
-                      beforeLabel="当时母体"
-                      afterLabel="同化结果"
+                      beforeLabel={selectedRevision.kind === 'assimilation' ? '变更前' : '恢复前'}
+                      afterLabel={selectedRevision.kind === 'assimilation' ? '变更后' : '恢复后'}
                       compact
                     />
                   </div>

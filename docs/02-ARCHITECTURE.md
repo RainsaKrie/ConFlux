@@ -1,6 +1,6 @@
 ﻿# Flux 核心架构
 
-当前实现版本基线：`v0.5.1`
+当前实现版本基线：`v0.6`
 
 ## 1. 架构总览
 
@@ -89,6 +89,16 @@ type FluxBlock = {
   }
   createdAt?: string
   updatedAt?: string
+  revisions?: {
+    id: string
+    kind: 'assimilation' | 'restore' | 'rollback'
+    beforeContent: string
+    afterContent: string
+    contextParagraph?: string
+    sourceBlockId?: string | null
+    sourceBlockTitle?: string
+    createdAt: string
+  }[]
 }
 ```
 
@@ -135,6 +145,8 @@ type SavedPool = {
 - `fluxBlocks`
 - `savedPools`
 - `peekBlockId`
+- `activePoolContext`
+- `recentPoolEvents`
 - `addBlock`
 - `updateBlock`
 - `replaceBlock`
@@ -147,8 +159,10 @@ type SavedPool = {
 持久化策略：
 
 - 本地存储键名为 `flux_blocks_store`
-- 仅持久化 `fluxBlocks` 与 `savedPools`
-- `peekBlockId` 这类 UI 状态不进持久化层
+- 持久化 `fluxBlocks`、`savedPools`、`activePoolContext` 与 `recentPoolEvents`
+- `fluxBlocks` 内部会一并持久化每个 block 的线性 `revisions[]`
+- 已包含从旧 `recentAssimilationRevisions` 结构迁移到 `fluxBlocks[].revisions[]` 的兼容逻辑
+- `peekBlockId` 这类纯 UI 状态不进持久化层
 
 ## 5. 文本降维与关系推导
 
@@ -208,12 +222,12 @@ TipTap 当前承载两类能力：
 `Phantom Weaving` 当前链路：
 
 1. 编辑器在用户停顿后触发本地静默检索
-2. 使用 `Fuse.js` 仅对 `fluxBlocks.title` 做轻量模糊匹配
+2. 使用 `Entity Lexicon V2` 对标题、实体、透镜摘要与正文短语做本地正则扫描
 3. 通过 `PhantomWeavingExtension` 注入 `Decoration.inline`
 4. 对候选词语绘制极淡的虚线，不主动打断输入
-5. 命中优先级采用“当前段落精确标题 > 全文精确标题 > Fuse 模糊候选”
+5. 词典优先级采用 `title > project/domain > lens summary > snippet`，并按字符串长度降序构建
 6. Hover Card 通过 portal 浮层挂到 `document.body`，避免被编辑器卡片裁切
-7. Hover Card 展示候选母体标题、标签、摘要和动作按钮，并支持点击虚线词兜底打开
+7. Hover Card 展示候选母体标题、标签、摘要和动作按钮，并会区分 `命中标题 / 命中实体 / 命中摘要/正文`
 8. 用户可选择插入 `Adaptive Lens`，或触发 `Crystal Assimilation`
 
 当前三视图关系统一方式：
@@ -239,6 +253,8 @@ TipTap 当前承载两类能力：
 - 若当前光标不在命中段落，系统会回看整篇正文中的第一个精确标题命中。
 - Hover 事件兼容 contenteditable 内的文本节点目标，并带点击 fallback。
 - 浮层和成功挂件均通过 portal 提升到页面顶层，避免 `overflow-hidden` 裁切。
+- 词典构建使用 `useMemo` 缓存，只在 `fluxBlocks` 变化时重算，不打断编辑器的输入防抖。
+- `extractAdaptiveLensSummaries()` 与 `contentToPlainText()` 共同参与词典构建，因此透镜摘要和正文 snippet 现在都能成为嗅探信标。
 
 `Adaptive Lens` 当前渲染形态：
 
@@ -279,8 +295,10 @@ TipTap 当前承载两类能力：
 - 已经可以从 Hover 卡触发最小闭环
 - 会读取当前段落、当前文章宏观语境和目标母体全文
 - 调用模型生成融合后的母体正文，并先进入预览确认流
-- 确认后会记录最近 revision，并在当前正文附近浮出低压迫挂件，可直接打开右侧抽屉核对母体
-- 当前已支持最近一次同化回滚，但仍缺少更完整的持久版本历史与冲突回看能力
+- 确认后会把结果写入目标 block，并同时生成内嵌于 block 的线性 revision
+- Drawer 已具备 `Version History`、共用 Diff 面板与任意版本恢复
+- revision 已会记录来源笔记 `sourceBlockId / sourceBlockTitle`，允许用户从历史记录直接回到触发这次更新的源笔记
+- 当前仍然只有前端本地线性历史，不支持分支、冲突合并与跨设备同步
 
 ### 7.3 Side-by-side Reference
 
@@ -295,11 +313,10 @@ TipTap 当前承载两类能力：
 
 基于目前已经落地的能力，当前优先级应该分成两层：
 
-1. `v0.5` 已完成，当前正式进入 `v0.6` 准备。
-2. `v0.6` 第一优先级已经完成：`Phantom Weaving` 已引入 `Entity Lexicon Match`，把标题、`project`、`domain` 统一纳入实体词典。
-3. `v0.6` 当前第二优先级是为 `Crystal Assimilation` 增加更可靠的 Diff Visualization、历史持久化与抽屉整合。
-4. `v0.7` 再为 `Phantom Weaving` 增加更稳定的命中调试与质量评估样本，继续抑制误报。
-5. `v0.8` 将 `Adaptive Lens`、`Peek Drawer`、`Assimilation Badge` 的文案与视觉进一步统一成“轻脚注系统”。
+1. `v0.6` 的核心收口已经完成：`Entity Lexicon V2`、Diff Visualization、Version History、Origin Traceability 和关键引用语言统一都已落地。
+2. 下一步默认进入 `v0.7`：优先为 `Phantom Weaving` 增加固定测试样本、命中质量调优与误报回归。
+3. `/write` 中完整的手动元数据管理依然是下一阶段最值得补齐的产品缺口。
+4. 若继续做工程化收尾，优先考虑构建体积、分片与回归验证，而不是重新设计主交互。
 
 ## 9. 当前交接建议
 

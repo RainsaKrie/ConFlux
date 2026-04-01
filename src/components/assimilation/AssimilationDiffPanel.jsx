@@ -85,7 +85,7 @@ export function AssimilationDiffPanel({
             - {diff.stats.removed} 收束片段
           </span>
           <span className="text-[11px] text-zinc-400">
-            {diff.rows.length ? `共 ${diff.rows.length} 段可核对差异` : '这次同化没有生成可见差异'}
+            {diff.rows.length ? `共 ${diff.rows.length} 段可核对差异` : '这次更新没有生成可见差异'}
           </span>
         </div>
       </div>
@@ -120,7 +120,7 @@ export function AssimilationDiffPanel({
                 >
                   {renderParts(
                     row.beforeParts,
-                    row.type === 'insert' ? '此前没有对应片段。' : '这部分没有保留到同化结果中。',
+                    row.type === 'insert' ? '此前没有对应片段。' : '这部分没有保留到更新结果中。',
                   )}
                 </div>
               </div>
@@ -139,7 +139,7 @@ export function AssimilationDiffPanel({
           ))
         ) : (
           <div className={`${compact ? 'px-4 py-4' : 'px-5 py-5'} text-sm text-zinc-500`}>
-            同化前后暂时没有可见文本变化，可能只是结构或语气上的轻微整理。
+            更新前后暂时没有可见文本变化，可能只是结构或语气上的轻微整理。
           </div>
         )}
       </div>

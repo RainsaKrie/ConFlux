@@ -2,6 +2,9 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { fluxBlocks as seedBlocks } from '../data/fluxBlocks'
 
+const MAX_BLOCK_REVISIONS = 5
+const MAX_POOL_EVENTS = 12
+
 const defaultSavedPools = [
   {
     id: 'default1',
@@ -12,13 +15,92 @@ const defaultSavedPools = [
   },
 ]
 
-function cloneSeedBlocks() {
-  return seedBlocks.map((block) => ({
+function buildTodayStamp() {
+  return new Date().toISOString().slice(0, 10)
+}
+
+function buildRevisionId(prefix = 'revision') {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+}
+
+function cloneDimensions(dimensions = {}) {
+  return Object.fromEntries(
+    Object.entries(dimensions).map(([key, values]) => [key, Array.isArray(values) ? [...values] : []]),
+  )
+}
+
+function normalizeRevisionList(revisions = []) {
+  if (!Array.isArray(revisions)) return []
+
+  return revisions
+    .filter(Boolean)
+    .map((revision) => ({ ...revision }))
+    .sort((left, right) => {
+      const leftTime = new Date(left.createdAt ?? 0).getTime()
+      const rightTime = new Date(right.createdAt ?? 0).getTime()
+      return rightTime - leftTime
+    })
+    .slice(0, MAX_BLOCK_REVISIONS)
+}
+
+function normalizeBlock(block = {}) {
+  return {
     ...block,
-    dimensions: Object.fromEntries(
-      Object.entries(block.dimensions).map(([key, values]) => [key, [...values]]),
-    ),
-  }))
+    dimensions: cloneDimensions(block.dimensions ?? {}),
+    revisions: normalizeRevisionList(block.revisions),
+  }
+}
+
+function groupLegacyRevisions(revisions = []) {
+  const grouped = new Map()
+
+  normalizeRevisionList(revisions).forEach((revision) => {
+    if (!revision.blockId) return
+    const current = grouped.get(revision.blockId) ?? []
+    if (current.length >= MAX_BLOCK_REVISIONS) return
+    grouped.set(revision.blockId, [...current, revision])
+  })
+
+  return grouped
+}
+
+function hydrateFluxBlocks(blocks, legacyRevisions = []) {
+  const sourceBlocks = Array.isArray(blocks) && blocks.length ? blocks : seedBlocks
+  const legacyMap = groupLegacyRevisions(legacyRevisions)
+
+  return sourceBlocks.map((block) => {
+    const normalizedBlock = normalizeBlock(block)
+    if (normalizedBlock.revisions.length) return normalizedBlock
+
+    const migratedRevisions = legacyMap.get(normalizedBlock.id) ?? []
+    return migratedRevisions.length
+      ? {
+          ...normalizedBlock,
+          revisions: migratedRevisions,
+        }
+      : normalizedBlock
+  })
+}
+
+function cloneSeedBlocks() {
+  return hydrateFluxBlocks(seedBlocks)
+}
+
+function updateBlockRevisions(block, nextRevision) {
+  return {
+    ...block,
+    revisions: normalizeRevisionList([nextRevision, ...(block.revisions ?? [])]),
+  }
+}
+
+function createRevisionEntry(block, revision, kind) {
+  return {
+    createdAt: new Date().toISOString(),
+    kind,
+    blockId: block.id,
+    blockTitle: revision.blockTitle ?? block.title ?? '',
+    ...revision,
+  }
 }
 
 export const useFluxStore = create(
@@ -29,10 +111,9 @@ export const useFluxStore = create(
       peekBlockId: null,
       activePoolContext: null,
       recentPoolEvents: [],
-      recentAssimilationRevisions: [],
       addBlock: (block) =>
         set((state) => ({
-          fluxBlocks: [block, ...state.fluxBlocks],
+          fluxBlocks: [normalizeBlock({ ...block, revisions: block.revisions ?? [] }), ...state.fluxBlocks],
         })),
       addPool: (pool) =>
         set((state) => ({
@@ -68,43 +149,135 @@ export const useFluxStore = create(
               ...event,
             },
             ...state.recentPoolEvents,
-          ].slice(0, 12),
+          ].slice(0, MAX_POOL_EVENTS),
         })),
-      recordAssimilationRevision: (revision) =>
+      applyAssimilationRevision: (revision) => {
+        let storedRevision = null
+
         set((state) => ({
-          recentAssimilationRevisions: [
-            {
-              createdAt: new Date().toISOString(),
-              ...revision,
-            },
-            ...state.recentAssimilationRevisions,
-          ].slice(0, 12),
-        })),
-      rollbackAssimilationRevision: (revisionId) =>
+          fluxBlocks: state.fluxBlocks.map((block) => {
+            if (block.id !== revision.blockId) return block
+
+            storedRevision = createRevisionEntry(block, revision, revision.kind ?? 'assimilation')
+            return updateBlockRevisions(
+              {
+                ...block,
+                content: revision.afterContent,
+                updatedAt: buildTodayStamp(),
+              },
+              storedRevision,
+            )
+          }),
+        }))
+
+        return storedRevision
+      },
+      recordAssimilationRevision: (revision) => {
+        let storedRevision = null
+
+        set((state) => ({
+          fluxBlocks: state.fluxBlocks.map((block) => {
+            if (block.id !== revision.blockId) return block
+
+            storedRevision = createRevisionEntry(block, revision, revision.kind ?? 'assimilation')
+            return updateBlockRevisions(block, storedRevision)
+          }),
+        }))
+
+        return storedRevision
+      },
+      restoreBlockRevision: (blockId, revisionId) => {
+        let restoredRevision = null
+
         set((state) => {
-          const revision = state.recentAssimilationRevisions.find((item) => item.id === revisionId)
-          if (!revision) return {}
+          const block = state.fluxBlocks.find((item) => item.id === blockId)
+          const targetRevision = block?.revisions?.find((item) => item.id === revisionId)
+          if (!block || !targetRevision) return {}
+
+          const targetContent = targetRevision.afterContent ?? ''
+          if ((block.content ?? '') === targetContent) return {}
+
+          restoredRevision = createRevisionEntry(
+            block,
+            {
+              afterContent: targetContent,
+              beforeContent: block.content ?? '',
+              contextParagraph: targetRevision.contextParagraph ?? '',
+              id: buildRevisionId('revision_restore'),
+              poolContextKey: targetRevision.poolContextKey ?? null,
+              poolId: targetRevision.poolId ?? null,
+              poolName: targetRevision.poolName ?? null,
+              sourceBlockId: targetRevision.sourceBlockId ?? null,
+              sourceBlockTitle: targetRevision.sourceBlockTitle ?? '',
+              sourceRevisionId: targetRevision.id,
+            },
+            'restore',
+          )
 
           return {
-            fluxBlocks: state.fluxBlocks.map((block) =>
-              block.id === revision.blockId
-                ? {
-                    ...block,
-                    content: revision.beforeContent,
-                    updatedAt: new Date().toISOString().slice(0, 10),
-                  }
-                : block,
-            ),
-            recentAssimilationRevisions: state.recentAssimilationRevisions.map((item) =>
-              item.id === revisionId
-                ? {
-                    ...item,
-                    rolledBackAt: new Date().toISOString(),
-                  }
+            fluxBlocks: state.fluxBlocks.map((item) =>
+              item.id === blockId
+                ? updateBlockRevisions(
+                    {
+                      ...item,
+                      content: targetContent,
+                      updatedAt: buildTodayStamp(),
+                    },
+                    restoredRevision,
+                  )
                 : item,
             ),
           }
-        }),
+        })
+
+        return restoredRevision
+      },
+      undoAssimilationRevision: (blockId, revisionId) => {
+        let rollbackRevision = null
+
+        set((state) => {
+          const block = state.fluxBlocks.find((item) => item.id === blockId)
+          const targetRevision = block?.revisions?.find((item) => item.id === revisionId)
+          if (!block || !targetRevision) return {}
+
+          const targetContent = targetRevision.beforeContent ?? ''
+          if ((block.content ?? '') === targetContent) return {}
+
+          rollbackRevision = createRevisionEntry(
+            block,
+            {
+              afterContent: targetContent,
+              beforeContent: block.content ?? '',
+              contextParagraph: targetRevision.contextParagraph ?? '',
+              id: buildRevisionId('revision_rollback'),
+              poolContextKey: targetRevision.poolContextKey ?? null,
+              poolId: targetRevision.poolId ?? null,
+              poolName: targetRevision.poolName ?? null,
+              sourceBlockId: targetRevision.sourceBlockId ?? null,
+              sourceBlockTitle: targetRevision.sourceBlockTitle ?? '',
+              sourceRevisionId: targetRevision.id,
+            },
+            'rollback',
+          )
+
+          return {
+            fluxBlocks: state.fluxBlocks.map((item) =>
+              item.id === blockId
+                ? updateBlockRevisions(
+                    {
+                      ...item,
+                      content: targetContent,
+                      updatedAt: buildTodayStamp(),
+                    },
+                    rollbackRevision,
+                  )
+                : item,
+            ),
+          }
+        })
+
+        return rollbackRevision
+      },
       updateBlock: (blockId, updater) =>
         set((state) => ({
           fluxBlocks: state.fluxBlocks.map((block) =>
@@ -118,12 +291,27 @@ export const useFluxStore = create(
     }),
     {
       name: 'flux_blocks_store',
+      version: 2,
+      migrate: (persistedState) => {
+        const state = persistedState && typeof persistedState === 'object' ? persistedState : {}
+
+        return {
+          ...state,
+          activePoolContext: state.activePoolContext ?? null,
+          fluxBlocks: hydrateFluxBlocks(state.fluxBlocks, state.recentAssimilationRevisions),
+          recentPoolEvents: Array.isArray(state.recentPoolEvents)
+            ? state.recentPoolEvents.slice(0, MAX_POOL_EVENTS)
+            : [],
+          savedPools: Array.isArray(state.savedPools) && state.savedPools.length
+            ? state.savedPools
+            : defaultSavedPools,
+        }
+      },
       partialize: (state) => ({
         fluxBlocks: state.fluxBlocks,
         savedPools: state.savedPools,
         activePoolContext: state.activePoolContext,
         recentPoolEvents: state.recentPoolEvents,
-        recentAssimilationRevisions: state.recentAssimilationRevisions,
       }),
     },
   ),

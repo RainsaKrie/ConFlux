@@ -2,9 +2,9 @@
 
 本文件就是当前项目的版本日志，不再额外维护第二份独立的 release log。
 
-## 当前版本：v0.5.1
+## 当前版本：v0.6 收口版
 
-当前版本已经从“概念原型”进入“可连续使用的前端 MVP”。现在可以明确认为：`v0.5` 已经完成，`v0.5.1` 则作为它的工程化收口版本存在；`v0.6` 现已进入第一阶段，并已完成 `Entity Lexicon` 的底层升级。
+当前版本已经不再只是“可连续使用的前端 MVP”，而是完成了 `v0.6` 的核心收口：`Phantom Weaving` 已进入 `Entity Lexicon V2`，`Crystal Assimilation` 已具备差异预览、线性版本历史、任意版本恢复与来源追溯链，关键引用链路的文案与交互语言也已完成第一轮统一。
 
 ## 已完成
 
@@ -41,15 +41,21 @@
 - ✅ `Crystal Assimilation` 已升级为“先预览、再确认、可回滚”的交互闭环，并记录最近 revision。
 - ✅ 同化与回滚事件已能以低压迫方式回流到当前 Feed / Graph 视角中的 Pool 事件流。
 - ✅ `v0.6 Phase 1` 已将 `Phantom Weaving` 从标题级 `Fuse.js` 匹配升级为 `Entity Lexicon Match`：`title / project / domain` 共同进入正则词典，Hover Card 也会显示 `命中标题 / 命中实体 / 命中领域`。
+- ✅ `Crystal Assimilation` 已补齐真正可核对的 Diff Visualization：预览弹层与 Drawer 现共用差异视图面板，而不再只是并排文本。
+- ✅ `recentAssimilationRevisions` 已收口为 `fluxBlocks[].revisions[]` 的线性版本历史，并带持久化迁移、长度上限与任意版本恢复。
+- ✅ `Crystal Assimilation` 的 revision 已补齐来源追溯：会记录 `sourceBlockId / sourceBlockTitle`，Drawer 可直接跳转回触发这次更新的来源笔记。
+- ✅ `Phantom Weaving` 已升级为 `Entity Lexicon V2`：词典来源不再只有 `title / project / domain`，还会吸收 `Adaptive Lens` 摘要与正文前 100 字短语。
+- ✅ Hover Card 的命中理由现已统一为 `命中标题 / 命中实体 / 命中摘要/正文`。
+- ✅ 关键引用链路已完成第一轮去魅化：`引用并生成摘要 / 更新至原始笔记 / 已同步更新 / 恢复此版本` 已替换早期偏概念化文案。
 
 ## 当前限制
 
 - ☐ 仍然没有后端、同步、权限和协作能力。
 - ☐ `domain / format / project` 之外的维度已经进入数据模型，但 UI 仍未完整暴露。
 - ☐ Editor 手动新增标签目前仍以 `project` 维度为主，完整维度管理还未完成。
-- ☐ `Adaptive Lens` 仍然是最稳定的显式引用入口，`Phantom Weaving` 虽已进入实体词典阶段，但还未扩展到透镜摘要和更深层的语义召回。
-- ☐ `Crystal Assimilation` 已具备预览、确认、最近 revision、抽屉内回看与单次回滚，并已跨会话保留；但仍未形成完整版本链与更细粒度 diff 视图。
-- ☐ 预览弹层、抽屉历史、成功挂件和 Feed / Graph 事件流的引用语言还没有完全统一。
+- ☐ `Adaptive Lens` 仍然是最稳定的显式引用入口；`Phantom Weaving` 虽已扩展到摘要与正文短语，但还没有固定测试样本与误报回归机制。
+- ☐ 当前版本历史仍然是前端本地的线性数组，不支持分支、冲突合并或跨设备同步。
+- ☐ 引用语言在核心链路中已经统一，但站内仍可能存在零星旧文案未完全收口。
 
 ## 已完成里程碑回顾
 
@@ -81,7 +87,7 @@
 - ✅ 拦截当前新段落与目标母体全文，构造结构化“同化”提示词。
 - ✅ 调用模型生成融合后的母体正文，而不是简单追加在尾部。
 - ✅ 将融合结果用于改写目标母体，并在编辑器中形成低压迫反馈闭环。
-- ✅ 当前实现已进一步升级为差异预览、确认应用、最近 revision 记录与一键回滚。
+- ✅ 当前实现已进一步升级为差异预览、确认应用、版本历史、任意版本恢复与来源追溯。
 
 ### v0.5 目标：零压迫知识流
 
@@ -106,6 +112,19 @@
 - ✅ 词条已加入长度过滤、停用词过滤、长度降序匹配与基础英文边界校验。
 - ✅ Hover Card 已能体现命中原因，不再默认把所有命中都解释成标题命中。
 
+### v0.6 Phase 2 目标：Diff / Version History / Origin Traceability
+
+- ✅ `AssimilationDiffPanel` 已成为预览弹层与 Drawer 共用的差异视图基座。
+- ✅ 版本历史已从全局脆弱列表迁移为每个 Block 内嵌的 `revisions[]` 线性结构，默认保留最近 5 次。
+- ✅ Drawer 顶部已升级为 `Version History`，可选择任意历史版本并恢复到该版本。
+- ✅ revision 已记录来源笔记 ID 与标题，允许从历史记录直接跳回触发这次更新的源笔记。
+
+### v0.6 Phase 3 目标：Entity Lexicon V2 与引用语言统一
+
+- ✅ `Phantom Weaving` 已将 `Adaptive Lens` 摘要和正文 snippet 纳入词典来源。
+- ✅ 词条现按“长度降序 + 权重优先”统一排序，优先级为 `title > entity > summary > snippet`。
+- ✅ Hover Card、来源脚注、成功挂件与 Version History 的核心文案已收敛到同一套更克制的引用语言。
+
 ## Graph 当前状态备忘
 
 为了确保下一次会话只读 docs 就能直接继续，这里单独记录 `/graph` 当前可依赖的事实：
@@ -118,15 +137,18 @@
 - 当前 Graph 页面已经收口为组合层，核心逻辑已拆到 `src/features/graph/`。
 - 如果继续扩展 Graph，高优先级不再是“先拆文件”，而是考虑和 Gravity Pool 的筛选联动、群系表达与跨视图连续体验。
 
-## `v0.6` 开发重点
+## 当前阶段结论
 
-当前版本已经完成 `v0.5` 主链与 `v0.6 Phase 1` 的 `Entity Lexicon Match`。接下来的工作重点如下：
+这一阶段可以视为已经完成：
 
-- ☐ 把 recent revision 从轻量持久列表升级为更可靠的版本历史。
-- ☐ 在 `Peek Drawer` 或确认面板中引入更直观的 Diff Visualization，让同化改写不再是黑盒。
-- ☐ 让同化预览、抽屉核对与事件回看共享同一套更统一的 UI 语言。
-- ☐ 视需要把回滚能力从“最近一次同化”扩展为更完整的历史选择。
-- ☐ 在 `/write` 中补齐 `domain / format / project` 的手动元数据管理闭环。
+- ✅ `v0.6` 的核心产品闭环已打通：`Entity Lexicon V2 + Diff Visualization + Version History + Origin Traceability` 已全部进入实现态。
+- ✅ 引用链路的主要交互语言也已经完成第一轮统一，不再阻碍下一阶段继续扩展能力。
+
+下一阶段更合理的重点应转向：
+
+- ☐ 为 `Phantom Weaving` 建立固定测试样本与误报/漏报评估机制。
+- ☐ 在 `/write` 中补齐更完整的 `domain / format / project` 手动元数据管理。
+- ☐ 视需要开始处理构建体积、回归验证与更长期的后端化边界。
 
 ### v0.7 建议：更聪明但依旧克制的嗅探
 

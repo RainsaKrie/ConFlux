@@ -43,6 +43,31 @@ function readAdaptiveLensBlockId(source = '') {
   ).trim()
 }
 
+export function extractAdaptiveLensSummaries(content = '') {
+  if (!content) return []
+
+  if (typeof document !== 'undefined') {
+    const tempDiv = document.createElement('div')
+    tempDiv.innerHTML = content
+
+    return [...tempDiv.querySelectorAll('adaptive-lens-node')]
+      .map((node) => node.getAttribute('summary') || node.getAttribute('data-summary') || '')
+      .map((summary) => summary.trim())
+      .filter(Boolean)
+  }
+
+  return [...content.matchAll(/<adaptive-lens-node\b([^>]*)><\/adaptive-lens-node>/gi)]
+    .map((match) => {
+      const attributes = match[1] ?? ''
+      return (
+        readAdaptiveLensAttribute(attributes, 'summary') ||
+        readAdaptiveLensAttribute(attributes, 'data-summary') ||
+        ''
+      ).trim()
+    })
+    .filter(Boolean)
+}
+
 export function contentToPlainText(content = '') {
   if (!content) return ''
 

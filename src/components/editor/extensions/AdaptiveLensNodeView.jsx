@@ -44,7 +44,7 @@ export function AdaptiveLensNodeView({ editor, node, updateAttributes }) {
     }
 
     if (!config || !config.apiKey) {
-      const message = '⚠️ 魔法透镜需要大模型提供算力，请先配置 API Key。'
+      const message = '引用摘要需要大模型支持，请先配置 API Key。'
       setStreamedSummary(message)
       updateAttributes({ summary: message, requestState: 'error', tone: 'error' })
       return
@@ -158,20 +158,20 @@ export function AdaptiveLensNodeView({ editor, node, updateAttributes }) {
 
   if (requestState === 'draft') {
     return (
-      <NodeViewWrapper className="group relative my-3 border-l-[3px] border-indigo-400/60 bg-gradient-to-r from-indigo-50/40 to-transparent py-1.5 pr-4 pl-3 transition-colors hover:border-indigo-400">
+      <NodeViewWrapper className="group relative my-3 border-l-[3px] border-zinc-300 bg-zinc-50/70 py-1.5 pr-4 pl-3 transition-colors hover:border-zinc-400">
         <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2 text-[11px] font-medium text-indigo-500/80">
-            <div className="rounded-full bg-indigo-100/80 p-1 text-indigo-500">
-              <Sparkles size={14} />
+          <div className="flex items-center gap-2 text-[11px] font-medium text-zinc-500">
+            <div className="rounded-full bg-zinc-100 p-1 text-zinc-500">
+              <Sparkles size={12} />
             </div>
-            <span>{`即将透视: ${title}`}</span>
+            <span>{`即将引用: ${title}`}</span>
           </div>
           <input
             type="text"
             autoFocus
             value={draftIntent}
-            placeholder="你想从中提取什么？(输入明确指令，或直接回车交由 AI 自动推断)"
-            className="w-full rounded-lg border border-indigo-200/70 bg-white/80 px-2.5 py-1.5 text-sm text-zinc-700 shadow-sm outline-none transition-all placeholder:text-zinc-400 focus:border-indigo-300 focus:bg-white"
+            placeholder="输入你希望生成的摘要重点，或直接回车使用默认摘要"
+            className="w-full rounded-lg border border-zinc-200 bg-white px-2.5 py-1.5 text-sm text-zinc-700 outline-none transition-all placeholder:text-zinc-400 focus:border-zinc-300 focus:bg-white"
             onChange={(event) => setDraftIntent(event.target.value)}
             onKeyDown={(event) => {
               event.stopPropagation()
@@ -187,10 +187,10 @@ export function AdaptiveLensNodeView({ editor, node, updateAttributes }) {
   }
 
   return (
-    <NodeViewWrapper className="group relative my-3 min-h-[28px] border-l-[3px] border-indigo-400/60 bg-gradient-to-r from-indigo-50/40 to-transparent py-1.5 pr-4 pl-3 transition-colors hover:border-indigo-400">
+    <NodeViewWrapper className="group relative my-3 min-h-[28px] border-l-[3px] border-zinc-300 bg-zinc-50/70 py-1.5 pr-4 pl-3 transition-colors hover:border-zinc-400">
       <div className="inline-block w-full">
         <span className={`inline break-words text-[15px] leading-relaxed ${node.attrs.requestState === 'error' ? 'text-red-500' : 'text-zinc-700'}`}>
-          {streamedSummary || '正在生成思想连接...'}
+          {streamedSummary || '正在生成引用摘要...'}
         </span>
         <span className="relative -top-[1px] ml-2 inline-flex items-center gap-1.5 align-middle">
           <span
@@ -200,10 +200,10 @@ export function AdaptiveLensNodeView({ editor, node, updateAttributes }) {
               event.stopPropagation()
             }}
             onClick={handleOpenSource}
-            className="inline-flex cursor-pointer select-none items-center gap-0.5 rounded bg-indigo-100/60 px-1.5 py-[2px] text-[10px] font-medium tracking-wide text-indigo-600 transition-colors hover:bg-indigo-200/80"
+            className="inline-flex cursor-pointer select-none items-center gap-0.5 rounded border border-zinc-200/50 bg-zinc-100 px-1.5 py-0.5 text-[11px] font-medium text-zinc-500 transition-colors hover:bg-zinc-200"
           >
             <span contentEditable={false}>{`来源: ${title}`}</span>
-            <ExternalLink size={10} />
+            <ExternalLink size={12} />
           </span>
           <button
             type="button"
@@ -217,10 +217,10 @@ export function AdaptiveLensNodeView({ editor, node, updateAttributes }) {
               setStreamedSummary('')
               updateAttributes({ requestState: 'draft' })
             }}
-            className="cursor-pointer rounded-md border border-zinc-200/60 bg-white p-1 text-zinc-400 opacity-0 shadow-sm transition-opacity hover:text-indigo-600 group-hover:opacity-100"
-            title="清空并重新输入指令"
+            className="cursor-pointer rounded-md border border-zinc-200/60 bg-white p-1 text-zinc-400 opacity-0 transition-opacity hover:bg-zinc-100 hover:text-zinc-600 group-hover:opacity-100"
+            title="重新生成摘要"
           >
-            <RefreshCw size={11} strokeWidth={2.5} />
+            <RefreshCw size={12} strokeWidth={2.2} />
           </button>
         </span>
       </div>

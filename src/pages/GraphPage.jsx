@@ -290,12 +290,12 @@ export function GraphPage() {
         <div className="relative min-h-0 flex-1 overflow-hidden bg-[#FAFAFA]" ref={containerRef}>
           <div className="absolute top-6 left-6 z-10 w-72">
             <div className="flex items-center gap-2 rounded-2xl border border-zinc-200/80 bg-white/90 p-2.5 shadow-lg backdrop-blur-md">
-              <Search size={16} className="text-zinc-400" />
+              <Search size={12} className="text-zinc-400" />
               <input
                 type="search"
                 value={searchQuery}
                 onChange={handleSearchChange}
-                placeholder="搜索节点标题..."
+                placeholder="在图中定位知识块..."
                 className="w-full bg-transparent text-sm text-zinc-700 outline-none placeholder:text-zinc-400"
               />
             </div>
@@ -311,11 +311,11 @@ export function GraphPage() {
                       className="flex w-full items-center justify-between gap-3 border-b border-zinc-100 px-3 py-2 text-left text-sm text-zinc-700 transition hover:bg-zinc-50 last:border-b-0"
                     >
                       <span className="truncate">{result.title}</span>
-                      <span className="shrink-0 text-[10px] uppercase tracking-[0.16em] text-zinc-400">Jump</span>
+                      <span className="shrink-0 text-[10px] uppercase tracking-[0.16em] text-zinc-400">定位</span>
                     </button>
                   ))
                 ) : (
-                  <div className="px-3 py-2 text-sm text-zinc-400">未找到匹配节点</div>
+                  <div className="px-3 py-2 text-sm text-zinc-400">未找到匹配知识块</div>
                 )}
               </div>
             ) : null}
