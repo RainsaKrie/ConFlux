@@ -1,80 +1,73 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+﻿import { useEffect, useMemo, useRef, useState } from 'react'
 import ForceGraph2D from 'react-force-graph-2d'
 import { motion } from 'framer-motion'
+import { ArrowUpRight, Orbit, Search, Sparkles, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import { GRAPH_PHYSICS, GRAPH_VIEW } from '../features/graph/constants'
+import { paintGraphNodePointerArea, renderGraphNode } from '../features/graph/rendering'
+import { useGraphCamera } from '../features/graph/useGraphCamera'
+import { useGraphSearch } from '../features/graph/useGraphSearch'
+import { getGraphLinkNodeId, getNodeSpreadRadius, linkTouchesNode } from '../features/graph/utils'
+import { filtersMatchBlock } from '../features/pools/utils'
 import { useFluxStore } from '../store/useFluxStore'
-import { extractBlockReferences } from '../utils/blocks'
+import { contentToPlainText } from '../utils/blocks'
+import {
+  buildGraphData,
+  getRelationSnapshot,
+  relationToneStyles,
+  visibleRelationDimensions,
+} from '../utils/relations'
 
-function buildGraphData(blocks) {
-  const total = blocks.length
-  const baseRadius = Math.max(72, total * 12)
-  const nodes = blocks.map((block, index) => {
-    const angle = (index / Math.max(total, 1)) * Math.PI * 2
-    const radialOffset = (index % 3) * 18
-    const radius = baseRadius + radialOffset
-
-    return {
-      id: block.id,
-      title: block.title,
-      block,
-      x: Math.cos(angle) * radius,
-      y: Math.sin(angle) * radius,
-    }
-  })
-
-  const links = []
-  const seen = new Set()
-
-  const addLink = (source, target) => {
-    if (source === target) return
-    const key = [source, target].sort().join('::')
-    if (seen.has(key)) return
-    seen.add(key)
-    links.push({ source, target })
-  }
-
-  for (let i = 0; i < blocks.length; i += 1) {
-    const left = blocks[i]
-    extractBlockReferences(left.content).forEach((ref) => addLink(left.id, ref))
-
-    for (let j = i + 1; j < blocks.length; j += 1) {
-      const right = blocks[j]
-      const keys = ['domain', 'format', 'project']
-      const connected = keys.some((key) =>
-        (left.dimensions[key] ?? []).some((value) => (right.dimensions[key] ?? []).includes(value)),
-      )
-
-      if (connected) {
-        addLink(left.id, right.id)
-      }
-    }
-  }
-
-  const degreeMap = new Map(nodes.map((node) => [node.id, 0]))
-  links.forEach((link) => {
-    degreeMap.set(link.source, (degreeMap.get(link.source) ?? 0) + 1)
-    degreeMap.set(link.target, (degreeMap.get(link.target) ?? 0) + 1)
-  })
-
-  nodes.forEach((node) => {
-    node.degree = degreeMap.get(node.id) ?? 0
-  })
-
-  return { nodes, links }
-}
-
-function truncateLabel(label = '') {
-  return label.length > 10 ? `${label.slice(0, 10)}...` : label
-}
+const MotionSection = motion.section
 
 export function GraphPage() {
   const navigate = useNavigate()
   const fluxBlocks = useFluxStore((state) => state.fluxBlocks)
-  const graphData = useMemo(() => buildGraphData(fluxBlocks), [fluxBlocks])
+  const activePoolContext = useFluxStore((state) => state.activePoolContext)
+  const recentPoolEvents = useFluxStore((state) => state.recentPoolEvents)
+  const scopedBlocks = useMemo(() => {
+    if (!activePoolContext?.filters) return fluxBlocks
+    return fluxBlocks.filter((block) => filtersMatchBlock(block, activePoolContext.filters))
+  }, [activePoolContext, fluxBlocks])
+  const graphData = useMemo(() => buildGraphData(scopedBlocks), [scopedBlocks])
   const graphRef = useRef(null)
   const containerRef = useRef(null)
   const [hoveredNode, setHoveredNode] = useState(null)
   const [size, setSize] = useState({ width: 0, height: 0 })
+  const { handleSearchChange, highlightNodes, isSearchActive, searchQuery, searchResults, setSearchQuery } =
+    useGraphSearch(scopedBlocks)
+  const graphNodeMap = useMemo(() => new Map(graphData.nodes.map((node) => [node.id, node])), [graphData.nodes])
+  const { clearSelection, focusNode, selectedNode } = useGraphCamera({
+    graphData,
+    graphNodeMap,
+    graphRef,
+    size,
+  })
+
+  const activeNode = selectedNode ?? hoveredNode
+  const activeBlock = activeNode?.block ?? null
+  const relationSnapshot = activeBlock ? getRelationSnapshot(activeBlock, graphData.relationMap) : null
+  const dominantType =
+    relationSnapshot && relationToneStyles[relationSnapshot.dominant.type]
+      ? relationSnapshot.dominant.type
+      : 'neutral'
+  const dominantTone = relationToneStyles[dominantType]
+  const preview = activeBlock ? contentToPlainText(activeBlock.content) : ''
+  const previewTags = activeBlock
+    ? Object.entries(activeBlock.dimensions)
+        .filter(([dimension]) => visibleRelationDimensions.includes(dimension))
+        .flatMap(([dimension, values]) => values.map((value) => ({ dimension, value })))
+        .slice(0, 4)
+    : []
+  const activeNeighborIds = useMemo(() => {
+    if (!activeBlock) return new Set()
+
+    return new Set((graphData.relationMap.get(activeBlock.id) ?? []).map((connection) => connection.id))
+  }, [activeBlock, graphData.relationMap])
+  const activePoolEvents = useMemo(() => {
+    if (!activePoolContext?.key) return []
+    return recentPoolEvents.filter((event) => event.poolContextKey === activePoolContext.key).slice(0, 3)
+  }, [activePoolContext, recentPoolEvents])
 
   useEffect(() => {
     const updateSize = () => {
@@ -115,19 +108,19 @@ export function GraphPage() {
     const fg = graphRef.current
     const chargeForce = fg.d3Force('charge')
     if (chargeForce) {
-      chargeForce.strength(-80)
+      chargeForce.strength(GRAPH_PHYSICS.chargeStrength)
     }
 
     const collisionForce = fg.d3Force('collision')
     if (collisionForce) {
-      collisionForce.radius(18)
-      collisionForce.strength(0.9)
+      collisionForce.radius((node) => getNodeSpreadRadius(node) + GRAPH_PHYSICS.collisionPadding)
+      collisionForce.strength(GRAPH_PHYSICS.collisionStrength)
     }
 
     const linkForce = fg.d3Force('link')
     if (linkForce) {
-      linkForce.distance(60)
-      linkForce.strength(0.22)
+      linkForce.distance(GRAPH_PHYSICS.linkDistance)
+      linkForce.strength(GRAPH_PHYSICS.linkStrength)
     }
 
     const centerForce = fg.d3Force('center')
@@ -137,106 +130,316 @@ export function GraphPage() {
     }
 
     fg.d3ReheatSimulation()
-
-    const fitGraph = () => {
-      fg.zoomToFit(520, 96)
-    }
-
-    let timeoutId = 0
-    const rafId = window.requestAnimationFrame(() => {
-      fitGraph()
-      timeoutId = window.setTimeout(fitGraph, 720)
-    })
-
-    return () => {
-      window.cancelAnimationFrame(rafId)
-      if (timeoutId) {
-        window.clearTimeout(timeoutId)
-      }
-    }
-  }, [graphData, size.width, size.height])
+  }, [graphData, size.height, size.width])
 
   useEffect(() => {
     if (!containerRef.current) return
-    containerRef.current.style.cursor = hoveredNode ? 'pointer' : 'grab'
-  }, [hoveredNode])
+    containerRef.current.style.cursor = hoveredNode || selectedNode ? 'pointer' : 'grab'
+  }, [hoveredNode, selectedNode])
+
+  const clearActiveSelection = useMemo(
+    () => () => {
+      clearSelection()
+      setHoveredNode(null)
+    },
+    [clearSelection],
+  )
+
+  const focusNodeById = useMemo(
+    () => (nodeId) => {
+      const node = graphNodeMap.get(nodeId)
+      if (!node) return
+
+      focusNode(node)
+      setHoveredNode(node)
+      setSearchQuery(node.title ?? '')
+    },
+    [focusNode, graphNodeMap, setSearchQuery],
+  )
+
+  const handleNodeHover = useMemo(
+    () => (node) => {
+      if (selectedNode) return
+      setHoveredNode(node)
+    },
+    [selectedNode],
+  )
+
+  const handleNodeClick = useMemo(
+    () => (node) => {
+      focusNode(node)
+      setHoveredNode(node)
+    },
+    [focusNode],
+  )
+
+  const getLinkColor = useMemo(
+    () => (link) => {
+      const baseColor = relationToneStyles[link.type]?.link ?? relationToneStyles.neutral.link
+      if (isSearchActive) {
+        const touchesMatch =
+          highlightNodes.has(getGraphLinkNodeId(link.source)) || highlightNodes.has(getGraphLinkNodeId(link.target))
+        return touchesMatch ? baseColor : 'rgba(228, 228, 231, 0.12)'
+      }
+      if (!activeNode) return baseColor
+
+      return linkTouchesNode(link, activeNode.id) ? baseColor : 'rgba(212, 212, 216, 0.12)'
+    },
+    [activeNode, highlightNodes, isSearchActive],
+  )
+
+  const getLinkWidth = useMemo(
+    () => (link) => (activeNode && linkTouchesNode(link, activeNode.id) ? 1.8 : 1),
+    [activeNode],
+  )
+
+  const getLinkDirectionalParticles = useMemo(
+    () => (link) => {
+      if (isSearchActive) {
+        const touchesMatch =
+          highlightNodes.has(getGraphLinkNodeId(link.source)) || highlightNodes.has(getGraphLinkNodeId(link.target))
+        if (!touchesMatch) return 0
+      }
+      if (!activeNode) return link.type === 'lens' || link.type === 'reference' ? 2 : 1
+      if (!linkTouchesNode(link, activeNode.id)) return 0
+      return link.type === 'lens' || link.type === 'reference' ? 2 : 1
+    },
+    [activeNode, highlightNodes, isSearchActive],
+  )
+
+  const getLinkDirectionalParticleWidth = useMemo(() => (link) => (link.type === 'lens' ? 2.6 : 2), [])
+
+  const getLinkDirectionalParticleSpeed = useMemo(() => (link) => (link.type === 'lens' ? 0.004 : 0.003), [])
+
+  const getLinkDirectionalParticleColor = useMemo(
+    () => (link) => {
+      if (isSearchActive) {
+        const touchesMatch =
+          highlightNodes.has(getGraphLinkNodeId(link.source)) || highlightNodes.has(getGraphLinkNodeId(link.target))
+        return touchesMatch
+          ? relationToneStyles[link.type]?.particle ?? relationToneStyles.neutral.particle
+          : 'rgba(228, 228, 231, 0.12)'
+      }
+      if (!activeNode) return relationToneStyles[link.type]?.particle ?? relationToneStyles.neutral.particle
+      return linkTouchesNode(link, activeNode.id)
+        ? relationToneStyles[link.type]?.particle ?? relationToneStyles.neutral.particle
+        : 'rgba(212, 212, 216, 0.14)'
+    },
+    [activeNode, highlightNodes, isSearchActive],
+  )
+
+  const handleNodePointerAreaPaint = useMemo(
+    () => (node, color, ctx) => {
+      paintGraphNodePointerArea(node, color, ctx)
+    },
+    [],
+  )
+
+  const handleNodeCanvasObject = useMemo(
+    () => (node, ctx, globalScale) => {
+      renderGraphNode(node, ctx, globalScale, {
+        activeNeighborIds,
+        activeNode,
+        highlightNodes,
+        hoveredNode,
+        searchQuery,
+        selectedNode,
+      })
+    },
+    [activeNeighborIds, activeNode, highlightNodes, hoveredNode, searchQuery, selectedNode],
+  )
 
   return (
-    <motion.section
+    <MotionSection
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
-      className="flex h-[calc(100vh-48px)] flex-col overflow-hidden rounded-[32px] border border-zinc-200 bg-white shadow-sm"
+      className="flex h-[calc(100vh-48px)] overflow-hidden rounded-[32px] border border-zinc-200 bg-white shadow-sm"
     >
-      <div className="flex items-center justify-between border-b border-zinc-100 px-6 py-4">
-        <div>
-          <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">
-            {'\u661f\u7cfb\u56fe\u8c31'}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex items-center justify-between border-b border-zinc-100 px-6 py-4">
+          <div>
+            <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">星系图谱</div>
+            <h1 className="mt-1 font-['Space_Grotesk',_'Noto_Sans_SC',_sans-serif] text-2xl font-semibold tracking-tight text-zinc-950">
+              知识物理关联图
+            </h1>
+            {activePoolContext ? (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-[11px] font-medium text-zinc-600">
+                  <Orbit className="h-3.5 w-3.5" />
+                  {activePoolContext.name}
+                </span>
+                {activePoolEvents.map((event) => (
+                  <button
+                    key={event.id}
+                    type="button"
+                    onClick={() => navigate(`/write?id=${event.blockId}`)}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-[11px] font-medium text-emerald-700 transition hover:bg-emerald-100"
+                  >
+                    <Sparkles className="h-3.5 w-3.5" />
+                    <span className="max-w-44 truncate">{event.blockTitle}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
-          <h1 className="mt-1 font-['Space_Grotesk',_'Noto_Sans_SC',_sans-serif] text-2xl font-semibold tracking-tight text-zinc-950">
-            {'\u77e5\u8bc6\u7269\u7406\u5173\u8054\u56fe'}
-          </h1>
+          <div className="text-xs font-normal text-zinc-400">
+            {graphData.nodes.length} nodes / {graphData.links.length} links
+          </div>
         </div>
-        <div className="text-xs font-normal text-zinc-400">
-          {graphData.nodes.length} nodes / {graphData.links.length} links
+
+        <div className="relative min-h-0 flex-1 overflow-hidden bg-[#FAFAFA]" ref={containerRef}>
+          <div className="absolute top-6 left-6 z-10 w-72">
+            <div className="flex items-center gap-2 rounded-2xl border border-zinc-200/80 bg-white/90 p-2.5 shadow-lg backdrop-blur-md">
+              <Search size={16} className="text-zinc-400" />
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={handleSearchChange}
+                placeholder="搜索节点标题..."
+                className="w-full bg-transparent text-sm text-zinc-700 outline-none placeholder:text-zinc-400"
+              />
+            </div>
+
+            {isSearchActive ? (
+              <div className="mt-2 overflow-hidden rounded-2xl border border-zinc-200/80 bg-white/95 shadow-lg backdrop-blur-md">
+                {searchResults.length ? (
+                  searchResults.map((result) => (
+                    <button
+                      key={result.id}
+                      type="button"
+                      onClick={() => focusNodeById(result.id)}
+                      className="flex w-full items-center justify-between gap-3 border-b border-zinc-100 px-3 py-2 text-left text-sm text-zinc-700 transition hover:bg-zinc-50 last:border-b-0"
+                    >
+                      <span className="truncate">{result.title}</span>
+                      <span className="shrink-0 text-[10px] uppercase tracking-[0.16em] text-zinc-400">Jump</span>
+                    </button>
+                  ))
+                ) : (
+                  <div className="px-3 py-2 text-sm text-zinc-400">未找到匹配节点</div>
+                )}
+              </div>
+            ) : null}
+          </div>
+
+          {size.width > 0 && size.height > 0 ? (
+            <ForceGraph2D
+              ref={graphRef}
+              width={size.width}
+              height={size.height}
+              graphData={graphData}
+              backgroundColor={GRAPH_VIEW.backgroundColor}
+              nodeRelSize={4}
+              warmupTicks={GRAPH_PHYSICS.warmupTicks}
+              cooldownTicks={GRAPH_PHYSICS.cooldownTicks}
+              d3AlphaDecay={GRAPH_PHYSICS.d3AlphaDecay}
+              d3VelocityDecay={GRAPH_PHYSICS.d3VelocityDecay}
+              linkColor={getLinkColor}
+              linkWidth={getLinkWidth}
+              linkDirectionalParticles={getLinkDirectionalParticles}
+              linkDirectionalParticleWidth={getLinkDirectionalParticleWidth}
+              linkDirectionalParticleSpeed={getLinkDirectionalParticleSpeed}
+              linkDirectionalParticleColor={getLinkDirectionalParticleColor}
+              onNodeHover={handleNodeHover}
+              onNodeClick={handleNodeClick}
+              onBackgroundClick={clearActiveSelection}
+              nodePointerAreaPaint={handleNodePointerAreaPaint}
+              nodeCanvasObject={handleNodeCanvasObject}
+            />
+          ) : null}
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-hidden bg-[#FAFAFA]" ref={containerRef}>
-        {size.width > 0 && size.height > 0 ? (
-          <ForceGraph2D
-            ref={graphRef}
-            width={size.width}
-            height={size.height}
-            graphData={graphData}
-            backgroundColor="#FAFAFA"
-            nodeRelSize={4}
-            warmupTicks={100}
-            cooldownTicks={200}
-            d3AlphaDecay={0.02}
-            d3VelocityDecay={0.25}
-            linkColor={() => 'rgba(165, 180, 252, 0.3)'}
-            linkWidth={() => 1}
-            linkDirectionalParticles={1}
-            linkDirectionalParticleWidth={2}
-            linkDirectionalParticleSpeed={0.003}
-            linkDirectionalParticleColor={() => 'rgba(99, 102, 241, 0.4)'}
-            onNodeHover={setHoveredNode}
-            onNodeClick={(node) => navigate(`/write?id=${node.id}`)}
-            nodeCanvasObject={(node, ctx, globalScale) => {
-              const isHovered = hoveredNode?.id === node.id
-              const linkCount = node.degree ?? 0
-              const baseRadius = Math.max(3, Math.min(8, 2 + linkCount * 1))
-              const coreRadius = baseRadius * (isHovered ? 0.75 : 0.5)
-              const outerHaloRadius = baseRadius * (isHovered ? 2.9 : 2.5)
-              const midHaloRadius = baseRadius * (isHovered ? 1.6 : 1.3)
-              const label = truncateLabel(node.title)
-              const fontSize = 10
-              const labelOffset = baseRadius * 2.5
+      <aside className="min-h-0 w-[340px] shrink-0 overflow-y-auto border-l border-zinc-100 bg-white/90 p-5">
+        {activeBlock && relationSnapshot ? (
+          <div className="flex min-h-full flex-col gap-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.24em] text-zinc-400">
+                <Sparkles className="h-3.5 w-3.5 text-indigo-400" />
+                {selectedNode ? '已锁定透视' : '关联透视'}
+              </div>
+              {selectedNode ? (
+                <button
+                  type="button"
+                  onClick={clearActiveSelection}
+                  className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
+                >
+                  <X className="h-3.5 w-3.5" />
+                  关闭
+                </button>
+              ) : null}
+            </div>
 
-              ctx.beginPath()
-              ctx.arc(node.x, node.y, outerHaloRadius, 0, 2 * Math.PI, false)
-              ctx.fillStyle = isHovered ? 'rgba(99, 102, 241, 0.2)' : 'rgba(129, 140, 248, 0.06)'
-              ctx.fill()
+            <div>
+              <h2 className="text-lg font-semibold text-zinc-900">{activeBlock.title}</h2>
+              <p className="mt-2 line-clamp-8 text-sm leading-6 text-zinc-500">
+                {preview || '这张知识块暂时还没有正文摘要。'}
+              </p>
+            </div>
 
-              ctx.beginPath()
-              ctx.arc(node.x, node.y, midHaloRadius, 0, 2 * Math.PI, false)
-              ctx.fillStyle = isHovered ? 'rgba(99, 102, 241, 0.2)' : 'rgba(129, 140, 248, 0.12)'
-              ctx.fill()
+            <div className="flex flex-wrap items-center gap-1.5">
+              {previewTags.map((tag) => (
+                <span
+                  key={`${activeBlock.id}-${tag.dimension}-${tag.value}`}
+                  className={`rounded-md px-1.5 py-0.5 text-[10px] font-medium ${
+                    relationToneStyles[tag.dimension]?.badge ?? relationToneStyles.neutral.badge
+                  }`}
+                >
+                  {tag.value}
+                </span>
+              ))}
+            </div>
 
-              ctx.beginPath()
-              ctx.arc(node.x, node.y, coreRadius, 0, 2 * Math.PI, false)
-              ctx.fillStyle = isHovered ? 'rgba(99, 102, 241, 1)' : 'rgba(99, 102, 241, 0.85)'
-              ctx.fill()
+            <div className={`rounded-2xl p-3 ${dominantTone.badge}`}>
+              <div className="text-[10px] uppercase tracking-[0.2em] opacity-70">当前主关系</div>
+              <div className="mt-1 text-sm font-medium">{relationSnapshot.dominant.label}</div>
+              <div className="mt-1 text-xs opacity-80">{relationSnapshot.totalConnections} 个直接关联节点</div>
+            </div>
 
-              ctx.font = `${isHovered ? '600' : '500'} ${fontSize}px system-ui, sans-serif`
-              ctx.fillStyle = isHovered ? '#18181b' : '#52525b'
-              ctx.textAlign = 'center'
-              ctx.textBaseline = 'top'
-              ctx.fillText(label, node.x, node.y + labelOffset)
-            }}
-          />
-        ) : null}
-      </div>
-    </motion.section>
+            <div className="flex flex-col gap-2">
+              <div className="text-xs font-medium text-zinc-500">主要关联理由</div>
+              {(graphData.relationMap.get(activeBlock.id) ?? [])
+                .slice()
+                .sort((left, right) => {
+                  if (right.weight !== left.weight) return right.weight - left.weight
+                  return left.label.localeCompare(right.label, 'zh-Hans-CN')
+                })
+                .slice(0, 5)
+                .map((connection) => {
+                  const tone = relationToneStyles[connection.type] ?? relationToneStyles.neutral
+                  return (
+                    <div
+                      key={`${activeBlock.id}-${connection.id}-${connection.type}-${connection.label}`}
+                      className="rounded-xl border border-zinc-100 bg-zinc-50/70 px-3 py-2"
+                    >
+                      <div className="truncate text-sm font-medium text-zinc-800">{connection.title}</div>
+                      <div className="mt-1 flex">
+                        <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-medium ${tone.badge}`}>
+                          {connection.label}
+                        </span>
+                      </div>
+                    </div>
+                  )
+                })}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => navigate(`/write?id=${activeBlock.id}`)}
+              className="mt-auto inline-flex items-center justify-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-50"
+            >
+              <ArrowUpRight className="h-4 w-4" />
+              打开这张知识块
+            </button>
+          </div>
+        ) : (
+          <div className="flex h-full flex-col items-start justify-center gap-3 text-zinc-400">
+            <div className="text-[11px] uppercase tracking-[0.24em]">关联透视</div>
+            <p className="text-sm leading-6">
+              把鼠标悬停在图中的某个节点上，这里会显示和 Feed 一致的关系语义、正文摘要与主要关联理由。点击节点后可以锁定右侧面板并滚动查看细节。
+            </p>
+          </div>
+        )}
+      </aside>
+    </MotionSection>
   )
 }

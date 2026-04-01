@@ -2,6 +2,8 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { Search, X } from 'lucide-react'
 
+const MotionDiv = motion.div
+
 function buildTokenKey(token) {
   return `${token.dimension}:${token.value}`
 }
@@ -122,7 +124,7 @@ export function OmniFilterBar({
 
       <AnimatePresence>
         {isSuggesting && filteredSuggestions.length > 0 ? (
-          <motion.div
+          <MotionDiv
             initial={{ opacity: 0, y: 6, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 4, scale: 0.98 }}
@@ -146,7 +148,7 @@ export function OmniFilterBar({
                 </button>
               ))}
             </div>
-          </motion.div>
+          </MotionDiv>
         ) : null}
       </AnimatePresence>
     </section>

@@ -1,14 +1,16 @@
 ﻿import { useEffect, useRef, useState } from 'react'
 import { NodeViewWrapper } from '@tiptap/react'
-import { AlertTriangle, ExternalLink, LoaderCircle, RotateCcw, Sparkles } from 'lucide-react'
+import { ExternalLink, RefreshCw, Sparkles } from 'lucide-react'
+import { useFluxStore } from '../../../store/useFluxStore'
 
 const DEFAULT_BASE_URL = 'https://api.deepseek.com/v1'
 const DEFAULT_MODEL = 'deepseek-chat'
 
-export function AdaptiveLensNodeView({ node, updateAttributes }) {
+export function AdaptiveLensNodeView({ editor, node, updateAttributes }) {
   const [streamedSummary, setStreamedSummary] = useState(node.attrs.summary || '')
   const [draftIntent, setDraftIntent] = useState(node.attrs.userIntent || '')
   const requestKeyRef = useRef('')
+  const setPeekBlockId = useFluxStore((state) => state.setPeekBlockId)
 
   const { title, content, contextParagraph, requestState, summary, userIntent } = node.attrs
 
@@ -26,7 +28,9 @@ export function AdaptiveLensNodeView({ node, updateAttributes }) {
   useEffect(() => {
     if (requestState !== 'pending') return
 
-    const requestKey = `${node.attrs.blockId}:${userIntent || ''}:${contextParagraph || ''}`
+    const macroContext = editor?.getText?.().slice(0, 2000) ?? ''
+
+    const requestKey = `${node.attrs.blockId}:${userIntent || ''}:${contextParagraph || ''}:${macroContext}`
     if (requestKeyRef.current === requestKey) return
     requestKeyRef.current = requestKey
 
@@ -54,9 +58,7 @@ export function AdaptiveLensNodeView({ node, updateAttributes }) {
           controller.abort()
         }, 12000)
 
-        const intentText = userIntent?.trim()
-          ? `【用户的明确提取指令】：${userIntent}`
-          : '【用户的明确提取指令】：（用户未提供，请严格根据当前写作语境推断并提取最相关的内容）'
+        const intentText = userIntent?.trim() || '无提问，请自然衔接。'
 
         const response = await fetch(`${(config.baseURL || DEFAULT_BASE_URL).replace(/\/+$/, '')}/chat/completions`, {
           method: 'POST',
@@ -71,13 +73,13 @@ export function AdaptiveLensNodeView({ node, updateAttributes }) {
               {
                 role: 'system',
                 content:
-                  '你是一个顶级的知识架构师与思想缝合专家（Knowledge Weaver）。用户的【当前写作语境】和被引用的【目标笔记】之间存在隐藏的深度关联。\n\n你的任务：提取【目标笔记】中最能支撑、启发或升华【当前写作语境】的核心洞察（Insight），写成 1-3 句极其精炼、鞭辟入里的论述（约 50-100 字）。\n\n要求：\n1. 拒绝空洞的百科式概括！必须发生明确的知识碰撞。\n2. 语气要像高水平的学术批注，能够【无缝衔接】作为用户当前段落的补充说明或底层逻辑依托。\n3. 不要讲客套话，不要包含“这篇笔记说明了”等机器口吻前缀，直接输出正文文字。',
+                  '你是一个顶级的学术代笔者（Ghostwriter）。你的任务是：根据用户的【当前写作语境】，将【被引用的笔记】提炼成一段自然、极其精炼的补充说明。\n    \n【绝对红线（违反将导致系统崩溃）】：\n1. 禁止输出任何格式化前缀（严格禁止输出 "【关联剖析】"、"分析：" 等字眼）。\n2. 禁止使用上帝视角的代词（严格禁止说 "被引用笔记指出..."、"呼应了用户文章..."、"引文中提到..."）。\n3. 绝不强行论证关联性！不要去解释它们为什么有关联。你只需要直接陈述【目标笔记】中能衔接当前语境的客观事实或核心观点！\n4. 必须极其克制，最多 1-2 句话（绝对不要超过 60 个字）！如果两者关联较弱，就简单提炼目标笔记的一句话核心事实即可。',
               },
               {
                 role: 'user',
-                content: `【当前写作语境】：\n${
-                  contextParagraph || '暂无上下文。'
-                }\n\n${intentText}\n\n【被引用的目标笔记】：\n标题：${title}\n内容：${content}`,
+                content: `【用户正在写的全局文章内容】：\n${
+                  macroContext || '暂无内容'
+                }\n\n【用户明确提问】：${intentText}\n\n【你需要提炼的目标笔记】：\n标题：${title}\n内容：${content}`,
               },
             ],
           }),
@@ -118,7 +120,7 @@ export function AdaptiveLensNodeView({ node, updateAttributes }) {
               const textDelta = data.choices?.[0]?.delta?.content || ''
               if (textDelta) {
                 fullText += textDelta
-                setStreamedSummary(fullText)
+                setStreamedSummary(fullText.trim())
               }
             } catch {
               // 忽略残缺 JSON，不打死流
@@ -126,7 +128,7 @@ export function AdaptiveLensNodeView({ node, updateAttributes }) {
           }
         }
 
-        updateAttributes({ summary: fullText, requestState: 'done', tone: 'info' })
+        updateAttributes({ summary: fullText.trim(), requestState: 'done', tone: 'info' })
       } catch (error) {
         console.error('[Adaptive Lens Error]', error)
         const message = error instanceof Error ? error.message : '未知错误'
@@ -137,12 +139,7 @@ export function AdaptiveLensNodeView({ node, updateAttributes }) {
     }
 
     void runFetch()
-  }, [content, contextParagraph, node.attrs.blockId, requestState, title, updateAttributes, userIntent])
-
-  const isError =
-    requestState === 'error' ||
-    streamedSummary.startsWith('🔴') ||
-    streamedSummary.startsWith('生成失败')
+  }, [content, contextParagraph, editor, node.attrs.blockId, requestState, title, updateAttributes, userIntent])
 
   const handleSubmitIntent = () => {
     updateAttributes({
@@ -153,95 +150,79 @@ export function AdaptiveLensNodeView({ node, updateAttributes }) {
     })
   }
 
+  const handleOpenSource = (event) => {
+    event.preventDefault()
+    event.stopPropagation()
+    setPeekBlockId(node.attrs.blockId)
+  }
+
   if (requestState === 'draft') {
     return (
-      <NodeViewWrapper className="my-4">
-        <div className="rounded-r-lg border-l-2 border-indigo-400 bg-indigo-50/50 p-3 text-indigo-900">
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-2 text-xs font-medium text-indigo-400">
+      <NodeViewWrapper className="group relative my-3 border-l-[3px] border-indigo-400/60 bg-gradient-to-r from-indigo-50/40 to-transparent py-1.5 pr-4 pl-3 transition-colors hover:border-indigo-400">
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2 text-[11px] font-medium text-indigo-500/80">
+            <div className="rounded-full bg-indigo-100/80 p-1 text-indigo-500">
               <Sparkles size={14} />
-              <span>{`即将透视: ${title}`}</span>
             </div>
-            <input
-              type="text"
-              autoFocus
-              value={draftIntent}
-              placeholder="你想从中提取什么？(输入明确指令，或直接回车交由 AI 自动推断)"
-              className="w-full rounded border border-indigo-200 bg-white/60 px-2 py-1.5 text-sm text-indigo-900 shadow-inner outline-none transition-all placeholder:text-indigo-300 focus:border-indigo-400 focus:bg-white"
-              onChange={(event) => setDraftIntent(event.target.value)}
-              onKeyDown={(event) => {
-                event.stopPropagation()
-                if (event.key === 'Enter') {
-                  event.preventDefault()
-                  handleSubmitIntent()
-                }
-              }}
-            />
+            <span>{`即将透视: ${title}`}</span>
           </div>
+          <input
+            type="text"
+            autoFocus
+            value={draftIntent}
+            placeholder="你想从中提取什么？(输入明确指令，或直接回车交由 AI 自动推断)"
+            className="w-full rounded-lg border border-indigo-200/70 bg-white/80 px-2.5 py-1.5 text-sm text-zinc-700 shadow-sm outline-none transition-all placeholder:text-zinc-400 focus:border-indigo-300 focus:bg-white"
+            onChange={(event) => setDraftIntent(event.target.value)}
+            onKeyDown={(event) => {
+              event.stopPropagation()
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                handleSubmitIntent()
+              }
+            }}
+          />
         </div>
       </NodeViewWrapper>
     )
   }
 
   return (
-    <NodeViewWrapper className="my-4">
-      <div
-        className={`rounded-r-lg border-l-2 p-3 ${
-          isError
-            ? 'border-rose-400 bg-rose-50/70 text-rose-900'
-            : 'border-indigo-400 bg-indigo-50/50 text-indigo-900'
-        }`}
-      >
-        <div className="flex items-start gap-3">
-          <div
-            className={`mt-0.5 rounded-full p-1.5 ${
-              isError ? 'bg-rose-100 text-rose-700' : 'bg-indigo-100 text-indigo-700'
-            }`}
+    <NodeViewWrapper className="group relative my-3 min-h-[28px] border-l-[3px] border-indigo-400/60 bg-gradient-to-r from-indigo-50/40 to-transparent py-1.5 pr-4 pl-3 transition-colors hover:border-indigo-400">
+      <div className="inline-block w-full">
+        <span className={`inline break-words text-[15px] leading-relaxed ${node.attrs.requestState === 'error' ? 'text-red-500' : 'text-zinc-700'}`}>
+          {streamedSummary || '正在生成思想连接...'}
+        </span>
+        <span className="relative -top-[1px] ml-2 inline-flex items-center gap-1.5 align-middle">
+          <span
+            contentEditable={false}
+            onMouseDown={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+            }}
+            onClick={handleOpenSource}
+            className="inline-flex cursor-pointer select-none items-center gap-0.5 rounded bg-indigo-100/60 px-1.5 py-[2px] text-[10px] font-medium tracking-wide text-indigo-600 transition-colors hover:bg-indigo-200/80"
           >
-            {isError ? <AlertTriangle className="h-4 w-4" /> : <Sparkles className="h-4 w-4" />}
-          </div>
-
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.24em] text-current/70">
-              <span>{isError ? 'Lens Warning' : 'Adaptive Lens'}</span>
-              {requestState === 'pending' ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : null}
-            </div>
-
-            <p className="mt-2 text-sm leading-7 text-current/95">
-              {streamedSummary || '正在连接模型并生成透镜摘要...'}
-            </p>
-
-            <div className="mt-3 flex items-center justify-between gap-3">
-              <button
-                type="button"
-                className="inline-flex items-center gap-1.5 rounded-full bg-white/70 px-3 py-1.5 text-xs font-medium text-indigo-700 transition hover:bg-white"
-                onMouseDown={(event) => {
-                  event.preventDefault()
-                  event.stopPropagation()
-                }}
-                onClick={() => {
-                  setDraftIntent(userIntent || '')
-                  setStreamedSummary('')
-                  updateAttributes({ requestState: 'draft' })
-                }}
-              >
-                <RotateCcw className="h-3.5 w-3.5" />
-                <span>重调指令</span>
-              </button>
-
-              <div
-                className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium transition ${
-                  isError
-                    ? 'bg-rose-100 text-rose-700 hover:bg-rose-200'
-                    : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'
-                }`}
-              >
-                <span>{`来源: ${title}`}</span>
-                <ExternalLink className="h-3.5 w-3.5" />
-              </div>
-            </div>
-          </div>
-        </div>
+            <span contentEditable={false}>{`来源: ${title}`}</span>
+            <ExternalLink size={10} />
+          </span>
+          <button
+            type="button"
+            contentEditable={false}
+            onMouseDown={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+            }}
+            onClick={() => {
+              setDraftIntent(userIntent || '')
+              setStreamedSummary('')
+              updateAttributes({ requestState: 'draft' })
+            }}
+            className="cursor-pointer rounded-md border border-zinc-200/60 bg-white p-1 text-zinc-400 opacity-0 shadow-sm transition-opacity hover:text-indigo-600 group-hover:opacity-100"
+            title="清空并重新输入指令"
+          >
+            <RefreshCw size={11} strokeWidth={2.5} />
+          </button>
+        </span>
       </div>
     </NodeViewWrapper>
   )

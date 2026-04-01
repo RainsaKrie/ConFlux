@@ -1,21 +1,13 @@
-﻿import { useEffect, useMemo, useState } from 'react'
-import { Command as CommandDialog } from 'cmdk'
+import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import {
-  Binary,
-  Bot,
-  Brain,
-  CircleDot,
-  Command,
-  Compass,
-  Search,
-  Settings,
-  Sparkles,
-  X,
-} from 'lucide-react'
+import { Binary, Bot, CircleDot, Command, Compass, Settings, X } from 'lucide-react'
 import { NavLink, Outlet, useNavigate, useSearchParams } from 'react-router-dom'
-import { DEFAULT_AI_CONFIG, readAiConfig, saveAiConfig } from '../utils/aiConfig'
+import { CommandDeck } from '../components/command/CommandDeck'
+import { buildPoolContext, buildPoolContextKey, encodePoolFilters, poolFiltersToTokens } from '../features/pools/utils'
 import { useFluxStore } from '../store/useFluxStore'
+import { DEFAULT_AI_CONFIG, readAiConfig, saveAiConfig } from '../utils/aiConfig'
+
+const MotionDiv = motion.div
 
 const navItems = [
   { to: '/feed', label: 'Feed', description: '动态流', icon: Compass },
@@ -23,38 +15,30 @@ const navItems = [
   { to: '/graph', label: 'Graph', description: '星谱', icon: Binary },
 ]
 
-function encodeFilters(filters) {
-  return encodeURIComponent(JSON.stringify(filters))
-}
-
-function poolFiltersToTokens(filters = {}) {
-  return Object.entries(filters).flatMap(([dimension, values]) =>
-    (values ?? []).map((value) => ({ dimension, value })),
-  )
-}
-
 export function SidebarLayout() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [isCommandOpen, setIsCommandOpen] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
-  const [config, setConfig] = useState(DEFAULT_AI_CONFIG)
+  const [config, setConfig] = useState(() => readAiConfig() ?? DEFAULT_AI_CONFIG)
   const savedPools = useFluxStore((state) => state.savedPools)
   const removePool = useFluxStore((state) => state.removePool)
+  const activePoolContext = useFluxStore((state) => state.activePoolContext)
+  const clearActivePoolContext = useFluxStore((state) => state.clearActivePoolContext)
+  const setActivePoolContext = useFluxStore((state) => state.setActivePoolContext)
   const activeFiltersToken = searchParams.get('filters')
 
   const activePoolId = useMemo(
     () =>
-      savedPools.find((pool) => encodeFilters(poolFiltersToTokens(pool.filters)) === activeFiltersToken)
-        ?.id ?? null,
-    [activeFiltersToken, savedPools],
+      savedPools.find((pool) => buildPoolContextKey(pool.filters) === activePoolContext?.key)?.id ??
+      savedPools.find((pool) => encodePoolFilters(poolFiltersToTokens(pool.filters)) === activeFiltersToken)?.id ??
+      null,
+    [activeFiltersToken, activePoolContext?.key, savedPools],
   )
 
   const hasApiKey = Boolean(config.apiKey?.trim())
 
   useEffect(() => {
-    setConfig(readAiConfig())
-
     const handleStorage = (event) => {
       if (!event.key || event.key === 'flux_ai_config') {
         setConfig(readAiConfig())
@@ -142,7 +126,17 @@ export function SidebarLayout() {
                         <div className="flex items-start gap-2">
                           <button
                             type="button"
-                            onClick={() => navigate(`/feed?filters=${encodeFilters(tokens)}`)}
+                            onClick={() => {
+                              setActivePoolContext(
+                                buildPoolContext({
+                                  poolId: pool.id,
+                                  name: pool.name,
+                                  filters: pool.filters,
+                                  sourceView: 'sidebar',
+                                }),
+                              )
+                              navigate(`/feed?filters=${encodePoolFilters(tokens)}`)
+                            }}
                             className="min-w-0 flex-1 text-left"
                           >
                             <div className="text-sm font-medium">{pool.name}</div>
@@ -152,6 +146,9 @@ export function SidebarLayout() {
                             type="button"
                             onClick={(event) => {
                               event.stopPropagation()
+                              if (activePoolContext?.poolId === pool.id) {
+                                clearActivePoolContext()
+                              }
                               removePool(pool.id)
                             }}
                             className="mt-0.5 rounded-full p-1 text-zinc-300 opacity-0 transition hover:bg-zinc-200 hover:text-zinc-600 group-hover:opacity-100"
@@ -211,69 +208,18 @@ export function SidebarLayout() {
         </div>
       </div>
 
-      <AnimatePresence>
-        {isCommandOpen ? (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-start justify-center bg-white/40 px-4 pt-[14vh] backdrop-blur-md"
-            onClick={() => setIsCommandOpen(false)}
-          >
-            <motion.div
-              initial={{ opacity: 0, y: 18, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 12, scale: 0.98 }}
-              transition={{ type: 'spring', stiffness: 280, damping: 24 }}
-              className="w-full max-w-2xl overflow-hidden rounded-[28px] border border-white/70 bg-white/85 shadow-[0_30px_80px_rgba(15,23,42,0.14)] backdrop-blur-xl"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <CommandDialog className="command-palette" label="Global Command Menu">
-                <div className="border-b border-zinc-100 px-4 py-3">
-                  <div className="flex items-center gap-3 rounded-2xl bg-zinc-50 px-4 py-3">
-                    <Command className="h-4 w-4 text-zinc-400" />
-                    <CommandDialog.Input
-                      autoFocus
-                      placeholder="搜索知识流、命令或动作..."
-                      className="w-full bg-transparent text-sm text-zinc-900 outline-none placeholder:text-zinc-400"
-                    />
-                  </div>
-                </div>
-
-                <CommandDialog.List className="max-h-[340px] overflow-y-auto p-3">
-                  <CommandDialog.Empty className="px-3 py-6 text-sm text-zinc-500">没有匹配项</CommandDialog.Empty>
-
-                  <CommandDialog.Group heading="Suggested" className="command-group">
-                    <CommandDialog.Item className="command-item">
-                      <Search className="h-4 w-4" />
-                      搜寻知识流...
-                    </CommandDialog.Item>
-                    <CommandDialog.Item className="command-item">
-                      <Sparkles className="h-4 w-4" />
-                      跨文档总结
-                    </CommandDialog.Item>
-                    <CommandDialog.Item className="command-item">
-                      <Brain className="h-4 w-4" />
-                      打开 AI 概念库
-                    </CommandDialog.Item>
-                  </CommandDialog.Group>
-                </CommandDialog.List>
-              </CommandDialog>
-            </motion.div>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
+      <CommandDeck isOpen={isCommandOpen} onOpenChange={setIsCommandOpen} />
 
       <AnimatePresence>
         {isSettingsOpen ? (
-          <motion.div
+          <MotionDiv
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 bg-zinc-900/20 backdrop-blur-sm"
             onClick={() => setIsSettingsOpen(false)}
           >
-            <motion.div
+            <MotionDiv
               initial={{ opacity: 0, y: 18, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 12, scale: 0.98 }}
@@ -340,8 +286,8 @@ export function SidebarLayout() {
               >
                 保存并关闭
               </button>
-            </motion.div>
-          </motion.div>
+            </MotionDiv>
+          </MotionDiv>
         ) : null}
       </AnimatePresence>
     </>

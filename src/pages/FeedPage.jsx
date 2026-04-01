@@ -1,61 +1,40 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Blocks, CircleDot, LayoutGrid, Link2, List, LoaderCircle } from 'lucide-react'
+import { Blocks, CircleDot, LayoutGrid, Link, List, LoaderCircle, Orbit, Sparkles } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { KnowledgeCard } from '../components/feed/KnowledgeCard'
 import { OmniFilterBar } from '../components/feed/OmniFilterBar'
+import {
+  buildPoolContext,
+  buildPoolContextKey,
+  buildPoolTokenKey,
+  findMatchingPoolByFilters,
+  tokensToPoolFilters,
+} from '../features/pools/utils'
 import { useFluxStore } from '../store/useFluxStore'
 import { readAiConfig } from '../utils/aiConfig'
 import { classifyQuickCapture } from '../utils/ai'
 import {
   buildBlockId,
   contentToPlainText,
-  extractBlockReferences,
   getTodayStamp,
   normalizeBlockDimensions,
 } from '../utils/blocks'
+import {
+  buildRelationMap,
+  getRelationSnapshot,
+  relationToneStyles,
+  visibleRelationDimensions,
+} from '../utils/relations'
 
 const FEED_VIEW_STORAGE_KEY = 'flux_feed_view_mode'
-const visibleDimensions = ['domain', 'format', 'project']
 const dimensionStyles = {
   domain: 'border border-blue-100 bg-blue-50 text-blue-600',
   format: 'border border-zinc-200 bg-zinc-100 text-zinc-500',
   project: 'border border-purple-100 bg-purple-50 text-purple-600',
 }
-const relationToneStyles = {
-  reference: {
-    orbit: 'border-indigo-200 bg-indigo-50',
-    core: 'bg-indigo-500',
-    badge: 'border border-indigo-100 bg-indigo-50 text-indigo-600',
-  },
-  domain: {
-    orbit: 'border-blue-200 bg-blue-50',
-    core: 'bg-blue-500',
-    badge: 'border border-blue-100 bg-blue-50 text-blue-600',
-  },
-  format: {
-    orbit: 'border-zinc-200 bg-zinc-100',
-    core: 'bg-zinc-500',
-    badge: 'border border-zinc-200 bg-zinc-100 text-zinc-600',
-  },
-  project: {
-    orbit: 'border-purple-200 bg-purple-50',
-    core: 'bg-purple-500',
-    badge: 'border border-purple-100 bg-purple-50 text-purple-600',
-  },
-  neutral: {
-    orbit: 'border-zinc-200 bg-zinc-50',
-    core: 'bg-zinc-400',
-    badge: 'border border-zinc-200 bg-zinc-50 text-zinc-500',
-  },
-}
-const relationPriority = {
-  reference: 4,
-  project: 3,
-  domain: 2,
-  format: 1,
-  neutral: 0,
-}
+const MotionSection = motion.section
+const MotionDiv = motion.div
 
 function parseFiltersParam(raw) {
   if (!raw) return []
@@ -91,20 +70,6 @@ function collectTagSuggestions(blocks) {
   })
 }
 
-function buildTokenKey(token) {
-  return `${token.dimension}:${token.value}`
-}
-
-function tokensToPoolFilters(tokens) {
-  return tokens.reduce((accumulator, token) => {
-    const currentValues = accumulator[token.dimension] ?? []
-    if (!currentValues.includes(token.value)) {
-      accumulator[token.dimension] = [...currentValues, token.value]
-    }
-    return accumulator
-  }, {})
-}
-
 function formatListDate(value) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
@@ -112,85 +77,6 @@ function formatListDate(value) {
     month: 'short',
     day: 'numeric',
   }).format(date)
-}
-
-function createConnection(left, right, type, label) {
-  return {
-    id: right.id,
-    title: right.title,
-    type,
-    label,
-    weight: relationPriority[type] ?? 0,
-  }
-}
-
-function buildRelationMap(blocks) {
-  const byId = new Map(blocks.map((block) => [block.id, block]))
-  const map = new Map(blocks.map((block) => [block.id, []]))
-
-  const pushUnique = (sourceId, connection) => {
-    const bucket = map.get(sourceId)
-    if (!bucket) return
-    const exists = bucket.some(
-      (item) => item.id === connection.id && item.type === connection.type && item.label === connection.label,
-    )
-    if (!exists) {
-      bucket.push(connection)
-    }
-  }
-
-  blocks.forEach((block) => {
-    extractBlockReferences(block.content).forEach((refId) => {
-      const target = byId.get(refId)
-      if (!target) return
-      pushUnique(block.id, createConnection(block, target, 'reference', '引用'))
-      pushUnique(target.id, createConnection(target, block, 'reference', '被引用'))
-    })
-  })
-
-  for (let i = 0; i < blocks.length; i += 1) {
-    const left = blocks[i]
-    for (let j = i + 1; j < blocks.length; j += 1) {
-      const right = blocks[j]
-
-      visibleDimensions.forEach((dimension) => {
-        const overlaps = (left.dimensions[dimension] ?? []).filter((value) =>
-          (right.dimensions[dimension] ?? []).includes(value),
-        )
-
-        overlaps.forEach((value) => {
-          pushUnique(left.id, createConnection(left, right, dimension, value))
-          pushUnique(right.id, createConnection(right, left, dimension, value))
-        })
-      })
-    }
-  }
-
-  return map
-}
-
-function getRelationSnapshot(block, relationMap) {
-  const connections = relationMap.get(block.id) ?? []
-  const relatedIds = [...new Set(connections.map((item) => item.id))]
-  const ordered = [...connections].sort((left, right) => {
-    if (right.weight !== left.weight) return right.weight - left.weight
-    return left.label.localeCompare(right.label, 'zh-Hans-CN')
-  })
-  const dominant = ordered[0] ?? { type: 'neutral', label: '独立条目' }
-  const connectedTitles = [...new Map(ordered.map((item) => [item.id, item.title])).values()].slice(0, 2)
-
-  return {
-    totalConnections: relatedIds.length,
-    dominant,
-    connectedTitles,
-    visibleReasons: ordered.slice(0, 3),
-  }
-}
-
-function buildRelatedLabel(snapshot) {
-  if (snapshot.connectedTitles.length === 0) return '尚未形成明显连接'
-  if (snapshot.connectedTitles.length === 1) return `连到 ${snapshot.connectedTitles[0]}`
-  return `连到 ${snapshot.connectedTitles[0]} · ${snapshot.connectedTitles[1]}`
 }
 
 export function FeedPage() {
@@ -215,6 +101,11 @@ export function FeedPage() {
   const addBlock = useFluxStore((state) => state.addBlock)
   const deleteBlock = useFluxStore((state) => state.deleteBlock)
   const addPool = useFluxStore((state) => state.addPool)
+  const savedPools = useFluxStore((state) => state.savedPools)
+  const activePoolContext = useFluxStore((state) => state.activePoolContext)
+  const clearActivePoolContext = useFluxStore((state) => state.clearActivePoolContext)
+  const recentPoolEvents = useFluxStore((state) => state.recentPoolEvents)
+  const setActivePoolContext = useFluxStore((state) => state.setActivePoolContext)
   const updateBlock = useFluxStore((state) => state.updateBlock)
 
   useEffect(() => {
@@ -258,17 +149,29 @@ export function FeedPage() {
     })
   }, [activeTokens, fluxBlocks, query])
 
+  const activeFilters = useMemo(() => tokensToPoolFilters(activeTokens), [activeTokens])
+
   const relationMap = useMemo(() => buildRelationMap(filteredBlocks), [filteredBlocks])
+
+  const matchingSavedPool = useMemo(
+    () => findMatchingPoolByFilters(savedPools, activeFilters),
+    [activeFilters, savedPools],
+  )
+
+  const activePoolEvents = useMemo(
+    () => recentPoolEvents.filter((event) => event.poolContextKey === buildPoolContextKey(activeFilters)).slice(0, 3),
+    [activeFilters, recentPoolEvents],
+  )
 
   const addToken = (token) => {
     setActiveTokens((current) => {
-      if (current.some((item) => buildTokenKey(item) === buildTokenKey(token))) return current
+      if (current.some((item) => buildPoolTokenKey(item) === buildPoolTokenKey(token))) return current
       return [...current, token]
     })
   }
 
   const removeToken = (tokenKey) => {
-    setActiveTokens((current) => current.filter((item) => buildTokenKey(item) !== tokenKey))
+    setActiveTokens((current) => current.filter((item) => buildPoolTokenKey(item) !== tokenKey))
   }
 
   const resizeCapture = () => {
@@ -368,6 +271,38 @@ export function FeedPage() {
     return activeTokens.map((token) => token.value).join(' / ')
   }, [activeTokens])
 
+  useEffect(() => {
+    if (activeTokens.length === 0) {
+      clearActivePoolContext()
+      return
+    }
+
+    const nextContext = matchingSavedPool
+      ? buildPoolContext({
+          poolId: matchingSavedPool.id,
+          name: matchingSavedPool.name,
+          filters: matchingSavedPool.filters,
+          sourceView: 'feed',
+        })
+      : buildPoolContext({
+          name: `观察主题：${activeLabel}`,
+          filters: activeFilters,
+          sourceView: 'feed',
+        })
+
+    if (activePoolContext?.key === nextContext.key && activePoolContext?.name === nextContext.name) return
+    setActivePoolContext(nextContext)
+  }, [
+    activeFilters,
+    activeLabel,
+    activePoolContext?.key,
+    activePoolContext?.name,
+    activeTokens.length,
+    clearActivePoolContext,
+    matchingSavedPool,
+    setActivePoolContext,
+  ])
+
   const handleSavePool = () => {
     if (activeTokens.length === 0) return
 
@@ -425,6 +360,36 @@ export function FeedPage() {
       />
 
       <div className="mb-8 mt-6">
+        {activePoolContext ? (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-200/80 bg-white/80 px-4 py-3 shadow-sm backdrop-blur-sm">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-zinc-100 text-zinc-600">
+                <Orbit className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-400">当前观察主题</div>
+                <div className="truncate text-sm font-medium text-zinc-900">{activePoolContext.name}</div>
+              </div>
+            </div>
+
+            {activePoolEvents.length ? (
+              <div className="flex flex-wrap items-center gap-2">
+                {activePoolEvents.map((event) => (
+                  <button
+                    key={event.id}
+                    type="button"
+                    onClick={() => navigate(`/write?id=${event.blockId}`)}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-emerald-100 bg-emerald-50 px-2.5 py-1 text-[11px] font-medium text-emerald-700 transition hover:bg-emerald-100"
+                  >
+                    <Sparkles className="h-3.5 w-3.5" />
+                    <span className="max-w-48 truncate">{event.blockTitle}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
         {!isExpanded && !capture.trim() ? (
           <button
             type="button"
@@ -485,7 +450,7 @@ export function FeedPage() {
         )}
       </div>
 
-      <motion.section
+      <MotionSection
         initial={{ opacity: 0, y: 28 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
@@ -494,7 +459,7 @@ export function FeedPage() {
         {viewMode === 'grid' ? (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
             {filteredBlocks.map((block, index) => (
-              <motion.div
+              <MotionDiv
                 key={block.id}
                 initial={{ opacity: 0, y: 18 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -506,14 +471,14 @@ export function FeedPage() {
                   onOpen={(item) => navigate(`/write?id=${item.id}`)}
                   onDelete={handleDeleteBlock}
                 />
-              </motion.div>
+              </MotionDiv>
             ))}
           </div>
         ) : (
-          <div className="relative overflow-hidden rounded-[28px] border border-zinc-200/70 bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,1),_rgba(248,250,252,0.95))] shadow-[0_10px_40px_rgba(15,23,42,0.06)]">
-            <div className="divide-y divide-zinc-100/70">
+          <div className="relative overflow-visible rounded-[28px] border border-zinc-200/70 bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,1),_rgba(248,250,252,0.95))] shadow-[0_10px_40px_rgba(15,23,42,0.06)]">
+            <div>
               {filteredBlocks.map((block, index) => {
-                const preview = contentToPlainText(block.content)
+                const preview = contentToPlainText(block.content).replace(/\s+/g, ' ').trim() || '暂无摘要'
                 const snapshot = getRelationSnapshot(block, relationMap)
                 const dominantType = relationToneStyles[snapshot.dominant.type] ? snapshot.dominant.type : 'neutral'
                 const tone = relationToneStyles[dominantType]
@@ -529,91 +494,101 @@ export function FeedPage() {
                     reason: item.label,
                   }))
                 const itemTags = Object.entries(block.dimensions)
-                  .filter(([dimension]) => visibleDimensions.includes(dimension))
+                  .filter(([dimension]) => visibleRelationDimensions.includes(dimension))
                   .flatMap(([dimension, values]) => values.map((value) => ({ dimension, value })))
-
+                  .slice(0, 3)
                 return (
-                  <motion.button
+                  <MotionDiv
                     key={block.id}
-                    type="button"
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.012 * index }}
                     onClick={() => navigate(`/write?id=${block.id}`)}
-                    className="group flex h-12 items-center justify-between border-b border-zinc-100 px-3 py-2 text-left transition hover:bg-zinc-50 last:border-b-0"
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        navigate(`/write?id=${block.id}`)
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    className="group relative flex items-center w-full px-4 py-3 border-b border-zinc-100 hover:bg-zinc-50 cursor-pointer hover:z-10 bg-white text-left transition last:border-b-0"
                   >
-                    <div className="flex min-w-0 flex-1 items-center gap-3 pr-4">
-                      <div className={`h-2 w-2 shrink-0 rounded-full ${tone.core}`} />
-                      <div className="max-w-[200px] shrink-0 truncate text-sm font-medium text-zinc-900">
+                    <div className="flex items-center gap-3 overflow-hidden flex-1 min-w-0 pr-6">
+                      <div className={`w-2 h-2 rounded-full shrink-0 ${tone.core}`} />
+                      <span className="text-sm font-medium text-zinc-900 truncate shrink-0 max-w-[200px]">
                         {block.title}
-                      </div>
-                      <span className="shrink-0 text-xs text-zinc-300">—</span>
-                      <div className="min-w-0 truncate text-xs font-light text-zinc-400">{preview}</div>
+                      </span>
+                      <span className="text-zinc-300 shrink-0">—</span>
+                      <span className="text-xs text-zinc-400 truncate min-w-0 flex-1 font-light">{preview}</span>
                     </div>
 
-                    <div className="flex shrink-0 items-center gap-2">
-                      <div className="relative group/badge shrink-0">
-                        <span
-                          className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] font-medium cursor-default ${
-                            snapshot.totalConnections > 0
-                              ? 'border-indigo-100 bg-indigo-50 text-indigo-500'
-                              : 'border-zinc-200 bg-zinc-50 text-zinc-400'
-                          }`}
-                        >
-                          <Link2 size={10} />
-                          {snapshot.totalConnections}
-                        </span>
-
-                        {connections.length > 0 ? (
-                          <div className="pointer-events-none absolute right-0 top-full z-50 mt-2 flex w-72 flex-col gap-2 rounded-xl border border-zinc-700/50 bg-zinc-900 p-3 opacity-0 shadow-2xl transition-all group-hover/badge:opacity-100">
-                            <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
-                              与之产生交集的知识块
+                    <div className="flex items-center gap-4 shrink-0 pl-4">
+                      {connections.length > 0 ? (
+                        <div className="relative group/badge flex items-center justify-center">
+                          <span className="flex items-center gap-1 rounded border border-indigo-100/80 bg-indigo-50/80 px-2 py-0.5 text-[10px] font-medium text-indigo-600 shadow-sm cursor-default transition-colors group-hover/badge:bg-indigo-100">
+                            <Link size={10} strokeWidth={2.5} /> {connections.length}
+                          </span>
+                          <div className="absolute right-0 top-full mt-2 w-72 bg-white/95 backdrop-blur-xl border border-zinc-200/80 rounded-xl p-3 shadow-[0_12px_40px_rgba(0,0,0,0.08)] opacity-0 group-hover/badge:opacity-100 pointer-events-none transition-all duration-200 z-50 flex flex-col gap-2">
+                            <div className="flex items-center gap-1.5 text-[10px] text-zinc-400 font-medium uppercase tracking-widest mb-1 pb-2 border-b border-zinc-100">
+                              <Link size={12} className="text-indigo-400" />
+                              关联网络 ({connections.length})
                             </div>
-                            <div className="flex flex-col gap-1.5">
-                              {connections.slice(0, 5).map((connection) => (
-                                <div key={`${block.id}-${connection.id}-${connection.reason}`} className="flex flex-col gap-0.5">
-                                  <span className="truncate text-xs text-zinc-200">{connection.targetTitle}</span>
-                                  <span className="font-mono text-[10px] text-indigo-400">{`∵ ${connection.reason}`}</span>
+                            <div className="flex flex-col gap-2.5">
+                              {connections.slice(0, 5).map((c) => (
+                                <div key={`${block.id}-${c.id}-${c.reason}`} className="flex flex-col gap-1">
+                                  <span className="text-xs text-zinc-700 font-medium truncate">{c.targetTitle}</span>
+                                  <div className="flex">
+                                    <span className="text-[10px] text-indigo-500/90 bg-indigo-50/50 px-1.5 py-0.5 rounded border border-indigo-100/50">
+                                      {c.reason}
+                                    </span>
+                                  </div>
                                 </div>
                               ))}
                             </div>
                             {connections.length > 5 ? (
-                              <div className="mt-1 text-[10px] text-zinc-500">
-                                {`...及其他 ${connections.length - 5} 个节点关联`}
+                              <div className="mt-1 pt-2 border-t border-zinc-100 text-[10px] text-zinc-400 text-center">
+                                ...及其他 {connections.length - 5} 个节点关联
                               </div>
                             ) : null}
                           </div>
-                        ) : null}
-                      </div>
-                      <div className="flex max-w-[200px] shrink-0 items-center gap-1.5 overflow-hidden">
+                        </div>
+                      ) : null}
+                      <div className="flex items-center gap-1.5 shrink-0">
                         {itemTags.map((tag) => (
                           <span
                             key={`${block.id}-${tag.dimension}-${tag.value}`}
-                            className={`rounded-md px-1.5 py-0.5 text-[10px] font-medium ${dimensionStyles[tag.dimension]}`}
+                            className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-medium ${dimensionStyles[tag.dimension]}`}
                           >
                             {tag.value}
                           </span>
                         ))}
                       </div>
-                      <span className="w-12 text-right text-[11px] text-zinc-300">{formatListDate(block.updatedAt)}</span>
+                      <span className="text-[11px] text-zinc-400 font-mono tracking-tight w-16 text-right shrink-0 group-hover:text-zinc-600 transition-colors">
+                        {formatListDate(block.updatedAt)}
+                      </span>
                     </div>
-                  </motion.button>
+                  </MotionDiv>
                 )
               })}
             </div>
           </div>
         )}
 
-        {filteredBlocks.length === 0 ? (
-          <div className="rounded-3xl border border-dashed border-zinc-200 bg-white px-6 py-14 text-center shadow-sm">
+      {filteredBlocks.length === 0 ? (
+        <div className="rounded-3xl border border-dashed border-zinc-200 bg-white px-6 py-14 text-center shadow-sm">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-zinc-100 text-zinc-500">
               <Blocks className="h-5 w-5" />
             </div>
             <p className="mt-4 text-lg font-medium text-zinc-900">这一区流暂时很安静</p>
-            <p className="mt-2 text-sm text-zinc-500">可以撤掉 Token，或者尝试更宽的搜索词。</p>
+            <p className="mt-2 text-sm text-zinc-500">
+              {activePoolContext
+                ? '可以调整当前观察主题，或者撤掉 Token 重新扩大视野。'
+                : '可以撤掉 Token，或者尝试更宽的搜索词。'}
+            </p>
           </div>
         ) : null}
-      </motion.section>
+      </MotionSection>
     </>
   )
 }

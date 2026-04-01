@@ -26,6 +26,10 @@ export const useFluxStore = create(
     (set, get) => ({
       fluxBlocks: cloneSeedBlocks(),
       savedPools: defaultSavedPools,
+      peekBlockId: null,
+      activePoolContext: null,
+      recentPoolEvents: [],
+      recentAssimilationRevisions: [],
       addBlock: (block) =>
         set((state) => ({
           fluxBlocks: [block, ...state.fluxBlocks],
@@ -43,6 +47,64 @@ export const useFluxStore = create(
         set((state) => ({
           savedPools: state.savedPools.filter((pool) => pool.id !== poolId),
         })),
+      setPeekBlockId: (blockId) =>
+        set(() => ({
+          peekBlockId: blockId,
+        })),
+      setActivePoolContext: (context) =>
+        set(() => ({
+          activePoolContext: context,
+        })),
+      clearActivePoolContext: () =>
+        set(() => ({
+          activePoolContext: null,
+        })),
+      recordPoolEvent: (event) =>
+        set((state) => ({
+          recentPoolEvents: [
+            {
+              id: `pool_event_${Date.now()}`,
+              createdAt: new Date().toISOString(),
+              ...event,
+            },
+            ...state.recentPoolEvents,
+          ].slice(0, 12),
+        })),
+      recordAssimilationRevision: (revision) =>
+        set((state) => ({
+          recentAssimilationRevisions: [
+            {
+              createdAt: new Date().toISOString(),
+              ...revision,
+            },
+            ...state.recentAssimilationRevisions,
+          ].slice(0, 12),
+        })),
+      rollbackAssimilationRevision: (revisionId) =>
+        set((state) => {
+          const revision = state.recentAssimilationRevisions.find((item) => item.id === revisionId)
+          if (!revision) return {}
+
+          return {
+            fluxBlocks: state.fluxBlocks.map((block) =>
+              block.id === revision.blockId
+                ? {
+                    ...block,
+                    content: revision.beforeContent,
+                    updatedAt: new Date().toISOString().slice(0, 10),
+                  }
+                : block,
+            ),
+            recentAssimilationRevisions: state.recentAssimilationRevisions.map((item) =>
+              item.id === revisionId
+                ? {
+                    ...item,
+                    rolledBackAt: new Date().toISOString(),
+                  }
+                : item,
+            ),
+          }
+        }),
       updateBlock: (blockId, updater) =>
         set((state) => ({
           fluxBlocks: state.fluxBlocks.map((block) =>
@@ -59,6 +121,9 @@ export const useFluxStore = create(
       partialize: (state) => ({
         fluxBlocks: state.fluxBlocks,
         savedPools: state.savedPools,
+        activePoolContext: state.activePoolContext,
+        recentPoolEvents: state.recentPoolEvents,
+        recentAssimilationRevisions: state.recentAssimilationRevisions,
       }),
     },
   ),

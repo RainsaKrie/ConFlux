@@ -1,11 +1,13 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react'
-import { motion } from 'framer-motion'
-import { LoaderCircle, Plus, Sparkles, X } from 'lucide-react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { useCallback } from 'react'
+import { Clock3, LoaderCircle, Orbit, Plus, RotateCcw, Sparkles, X } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { AssimilationDiffPanel } from '../components/assimilation/AssimilationDiffPanel'
 import { EditorToolbar, FluxEditor } from '../components/editor/FluxEditor'
 import { useFluxStore } from '../store/useFluxStore'
 import { classifyQuickCapture } from '../utils/ai'
-import { readAiConfig } from '../utils/aiConfig'
+import { AI_CONFIG_STORAGE_KEY, readAiConfig, resolveChatCompletionsUrl } from '../utils/aiConfig'
 import { contentToPlainText, getTodayStamp, normalizeBlockDimensions } from '../utils/blocks'
 
 const editableDimensions = ['domain', 'format', 'project']
@@ -13,6 +15,42 @@ const dimensionStyles = {
   domain: 'border border-blue-100 bg-blue-50 text-blue-600',
   format: 'border border-zinc-200 bg-zinc-100 text-zinc-500',
   project: 'border border-purple-100 bg-purple-50 text-purple-600',
+}
+const CLASSIFICATION_SYSTEM_PROMPT =
+  '我传给你一段笔记。请帮我完成两件事：1. 为这段笔记起一个极简的标题（10个字以内，不要任何标点符号）。2. 提取3个维度：domain(领域,最多2个)、format(体裁)、project(项目实体名,没有则留空)。所有输出必须使用【简体中文】。强制输出合法JSON：{"title":"概括性短标题", "domain":[],"format":[],"project":[]}。除 JSON 外不要输出任何多余字符。'
+const MotionSection = motion.section
+const MotionAside = motion.aside
+
+function extractJsonObject(text = '') {
+  const fenced = text.match(/```json\s*([\s\S]*?)```/i)
+  if (fenced?.[1]) return fenced[1]
+
+  const firstBrace = text.indexOf('{')
+  const lastBrace = text.lastIndexOf('}')
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    return text.slice(firstBrace, lastBrace + 1)
+  }
+
+  return text
+}
+
+function safeParseClassification(text = '') {
+  try {
+    const parsed = JSON.parse(extractJsonObject(text))
+    return {
+      title: typeof parsed?.title === 'string' ? parsed.title.trim() : '',
+      domain: Array.isArray(parsed?.domain) ? parsed.domain : ['未分类'],
+      format: Array.isArray(parsed?.format) ? parsed.format : ['碎片'],
+      project: Array.isArray(parsed?.project) ? parsed.project : [],
+    }
+  } catch {
+    return {
+      title: '',
+      domain: ['未分类'],
+      format: ['碎片'],
+      project: [],
+    }
+  }
 }
 
 function buildFallbackTitleCandidate(text) {
@@ -36,6 +74,18 @@ function shouldReplaceWithAiTitle(currentTitle, content, aiTitle) {
   return false
 }
 
+function formatRevisionTime(value) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date)
+}
+
 export function EditorPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -54,6 +104,12 @@ export function EditorPage() {
   const blockId = searchParams.get('id')
   const fluxBlocks = useFluxStore((state) => state.fluxBlocks)
   const addBlock = useFluxStore((state) => state.addBlock)
+  const activePoolContext = useFluxStore((state) => state.activePoolContext)
+  const peekBlockId = useFluxStore((state) => state.peekBlockId)
+  const recentAssimilationRevisions = useFluxStore((state) => state.recentAssimilationRevisions)
+  const recordPoolEvent = useFluxStore((state) => state.recordPoolEvent)
+  const rollbackAssimilationRevision = useFluxStore((state) => state.rollbackAssimilationRevision)
+  const setPeekBlockId = useFluxStore((state) => state.setPeekBlockId)
   const updateBlock = useFluxStore((state) => state.updateBlock)
 
   const block = useMemo(
@@ -65,14 +121,39 @@ export function EditorPage() {
     () => normalizeBlockDimensions(block?.dimensions ?? {}),
     [block?.dimensions],
   )
+  const peekBlock = useMemo(
+    () => fluxBlocks.find((item) => item.id === peekBlockId) ?? null,
+    [fluxBlocks, peekBlockId],
+  )
+  const peekDimensions = useMemo(
+    () => normalizeBlockDimensions(peekBlock?.dimensions ?? {}),
+    [peekBlock?.dimensions],
+  )
+  const peekBlockRevisions = useMemo(
+    () =>
+      peekBlock
+        ? recentAssimilationRevisions.filter((revision) => revision.blockId === peekBlock.id).slice(0, 6)
+        : [],
+    [peekBlock, recentAssimilationRevisions],
+  )
+  const activeDocumentKey = blockId ?? 'new'
   const noteBadge = block?.id ? block.id.replace('block_', '').slice(-6) : 'new'
+  const [selectedRevisionId, setSelectedRevisionId] = useState(null)
+  const selectedRevision = useMemo(
+    () =>
+      peekBlockRevisions.find((revision) => revision.id === selectedRevisionId)
+      ?? peekBlockRevisions[0]
+      ?? null,
+    [peekBlockRevisions, selectedRevisionId],
+  )
 
   useEffect(
     () => () => {
       window.clearTimeout(titleSaveTimeoutRef.current)
       window.clearTimeout(contentSaveTimeoutRef.current)
+      setPeekBlockId(null)
     },
-    [],
+    [setPeekBlockId],
   )
 
   useEffect(() => {
@@ -87,7 +168,15 @@ export function EditorPage() {
     setSaveState('所有修改已自动保存')
   }, [block?.content, block?.id, block?.title])
 
-  const enrichBlockWithAi = async (targetId, rawTitle, rawContent) => {
+  useEffect(() => {
+    setSelectedRevisionId((current) => {
+      if (!peekBlockRevisions.length) return null
+      if (current && peekBlockRevisions.some((revision) => revision.id === current)) return current
+      return peekBlockRevisions[0].id
+    })
+  }, [peekBlockRevisions])
+
+  const enrichBlockWithAi = useCallback(async (targetId, rawTitle, rawContent) => {
     if (!targetId || aiEnrichedIdsRef.current.has(targetId)) return
 
     const plainContent = contentToPlainText(rawContent)
@@ -122,9 +211,9 @@ export function EditorPage() {
     } finally {
       aiEnrichedIdsRef.current.delete(targetId)
     }
-  }
+  }, [updateBlock])
 
-  const persistDocument = (nextTitle, nextContent) => {
+  const persistDocument = useCallback((nextTitle, nextContent) => {
     const plainTitle = nextTitle.trim()
     const plainContent = contentToPlainText(nextContent)
     if (!plainTitle && !plainContent) {
@@ -162,7 +251,7 @@ export function EditorPage() {
     navigate(`/write?id=${newId}`, { replace: true })
     void enrichBlockWithAi(newId, nextTitle, nextContent)
     setSaveState('所有修改已自动保存')
-  }
+  }, [addBlock, blockId, enrichBlockWithAi, navigate, updateBlock])
 
   const handleRemoveDimension = (dimension, value) => {
     const activeBlockId = blockId || pendingCreatedIdRef.current
@@ -217,19 +306,56 @@ export function EditorPage() {
       return
     }
 
-    const latestText = editorInstance?.getText?.() ?? contentToPlainText(content)
+    const latestHtml = editorInstance?.getHTML?.() ?? content
+    const latestText = contentToPlainText(latestHtml)
     const mergedText = [title.trim(), latestText.trim()].filter(Boolean).join('\n')
     if (!mergedText.trim()) return
 
-    const aiConfig = readAiConfig()
-    if (!aiConfig.apiKey?.trim()) {
+    const configRaw = window.localStorage.getItem(AI_CONFIG_STORAGE_KEY)
+    let aiConfig = null
+
+    try {
+      aiConfig = configRaw ? JSON.parse(configRaw) : null
+    } catch {
+      aiConfig = null
+    }
+
+    if (!aiConfig?.apiKey?.trim()) {
       window.alert('请先在左侧边栏底部的设置中配置大模型 API Key！')
       return
     }
 
     setIsRetagging(true)
     try {
-      const aiTags = await classifyQuickCapture(mergedText, aiConfig)
+      const response = await fetch(resolveChatCompletionsUrl(aiConfig.baseURL), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${aiConfig.apiKey.trim()}`,
+        },
+        body: JSON.stringify({
+          model: aiConfig.model || 'deepseek-chat',
+          messages: [
+            {
+              role: 'system',
+              content: CLASSIFICATION_SYSTEM_PROMPT,
+            },
+            {
+              role: 'user',
+              content: `请为这篇知识笔记重新审视并打标：\n${mergedText}`,
+            },
+          ],
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+
+      const payload = await response.json()
+      const rawText = payload?.choices?.[0]?.message?.content ?? ''
+      const aiTags = safeParseClassification(rawText)
+
       updateBlock(activeBlockId, (old) => ({
         dimensions: {
           ...normalizeBlockDimensions(old.dimensions),
@@ -239,8 +365,29 @@ export function EditorPage() {
         },
         updatedAt: getTodayStamp(),
       }))
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '未知错误'
+      window.alert(`AI 重新审视失败：${message}`)
     } finally {
       setIsRetagging(false)
+    }
+  }
+
+  const handleRollbackFromDrawer = () => {
+    if (!selectedRevision || selectedRevision.rolledBackAt) return
+
+    rollbackAssimilationRevision(selectedRevision.id)
+
+    if (selectedRevision.poolContextKey) {
+      recordPoolEvent({
+        blockId: selectedRevision.blockId,
+        blockTitle: selectedRevision.blockTitle,
+        message: '已从抽屉撤销最近一次同化',
+        poolContextKey: selectedRevision.poolContextKey,
+        poolId: selectedRevision.poolId,
+        poolName: selectedRevision.poolName,
+        type: 'rollback',
+      })
     }
   }
 
@@ -263,7 +410,7 @@ export function EditorPage() {
     return () => {
       window.clearTimeout(titleSaveTimeoutRef.current)
     }
-  }, [block, blockId, content, title, addBlock, navigate, updateBlock])
+  }, [block, blockId, content, persistDocument, title])
 
   useEffect(() => {
     if (isHydratingRef.current) {
@@ -285,118 +432,268 @@ export function EditorPage() {
     return () => {
       window.clearTimeout(contentSaveTimeoutRef.current)
     }
-  }, [block, blockId, content, title, addBlock, navigate, updateBlock])
+  }, [block, blockId, content, persistDocument, title])
 
   return (
-    <motion.section
-      initial={{ opacity: 0, y: 18 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="mx-auto mt-14 max-w-4xl px-4 pb-16"
-    >
-      <div className="mb-10 rounded-[32px] border border-zinc-200/80 bg-white/70 px-6 py-6 shadow-[0_16px_50px_rgba(15,23,42,0.05)] backdrop-blur-sm">
-        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <span className="rounded-full bg-zinc-100 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.24em] text-zinc-500">
-              note {noteBadge}
-            </span>
-            <span className="text-[11px] uppercase tracking-[0.2em] text-zinc-300">
-              {block?.updatedAt ?? 'draft'}
-            </span>
-          </div>
-          <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">{saveState}</div>
-        </div>
-
-        <input
-          type="text"
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-          placeholder="在此输入标题..."
-          className="flux-title-input mb-4 w-full border-none bg-transparent outline-none"
-        />
-
-        <div className="flex flex-wrap items-center gap-2">
-          {editableDimensions.flatMap((dimension) =>
-            currentDimensions[dimension].map((value) => (
-              <span
-                key={`${dimension}-${value}`}
-                className={`group inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium ${dimensionStyles[dimension]}`}
-              >
-                <span>{value}</span>
-                <button
-                  type="button"
-                  className="opacity-0 transition-opacity group-hover:opacity-100"
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => handleRemoveDimension(dimension, value)}
-                >
-                  <X className="h-3 w-3" />
-                </button>
+    <>
+      <MotionSection
+        initial={{ opacity: 0, y: 18 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="mx-auto mt-14 max-w-4xl px-4 pb-16"
+      >
+        <div className="mb-10 rounded-[32px] border border-zinc-200/80 bg-white/70 px-6 py-6 shadow-[0_16px_50px_rgba(15,23,42,0.05)] backdrop-blur-sm">
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full bg-zinc-100 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.24em] text-zinc-500">
+                note {noteBadge}
               </span>
-            )),
-          )}
+              <span className="text-[11px] uppercase tracking-[0.2em] text-zinc-300">
+                {block?.updatedAt ?? 'draft'}
+              </span>
+              {activePoolContext ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 py-1 text-[11px] font-medium text-zinc-600 shadow-sm">
+                  <Orbit className="h-3.5 w-3.5" />
+                  {activePoolContext.name}
+                </span>
+              ) : null}
+            </div>
+            <div className="text-[11px] uppercase tracking-[0.2em] text-zinc-400">{saveState}</div>
+          </div>
 
-          {isAddingTag ? (
-            <input
-              autoFocus
-              value={tagInput}
-              placeholder="输入标签并回车..."
-              className="w-24 rounded bg-zinc-100/70 px-2 py-1 text-[11px] text-zinc-600 outline-none ring-1 ring-zinc-200"
-              onChange={(event) => setTagInput(event.target.value)}
-              onBlur={() => {
-                if (!tagInput.trim()) {
+          <input
+            type="text"
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder="在此输入标题..."
+            className="flux-title-input mb-4 w-full border-none bg-transparent outline-none"
+          />
+
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            {editableDimensions.flatMap((dimension) =>
+              currentDimensions[dimension].map((value) => (
+                <div
+                  key={`${dimension}-${value}`}
+                  className={`group inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium ${dimensionStyles[dimension]}`}
+                >
+                  <span>{value}</span>
+                  <button
+                    type="button"
+                    className="rounded-sm opacity-0 transition-opacity group-hover:opacity-100 hover:bg-white/60"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => handleRemoveDimension(dimension, value)}
+                    aria-label={`删除 ${value}`}
+                  >
+                    <X className="h-2.5 w-2.5" />
+                  </button>
+                </div>
+              )),
+            )}
+
+            {isAddingTag ? (
+              <input
+                autoFocus
+                value={tagInput}
+                placeholder="输入标签并回车..."
+                className="w-28 rounded-md border border-zinc-200 bg-white px-2 py-1 text-[11px] text-zinc-600 outline-none ring-2 ring-indigo-500/10"
+                onChange={(event) => setTagInput(event.target.value)}
+                onBlur={() => {
                   setTagInput('')
                   setIsAddingTag(false)
-                }
-              }}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault()
-                  handleAddTag()
-                }
-              }}
-            />
-          ) : (
-            <button
-              type="button"
-              className="rounded px-2 py-1 text-[11px] text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600"
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => setIsAddingTag(true)}
-            >
-              <span className="inline-flex items-center gap-1">
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    handleAddTag()
+                  }
+                }}
+              />
+            ) : (
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-600"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => setIsAddingTag(true)}
+              >
                 <Plus className="h-3 w-3" />
                 <span>添加标签</span>
-              </span>
-            </button>
-          )}
-
-          <button
-            type="button"
-            className={`ml-auto inline-flex items-center gap-1 rounded-md border border-indigo-100/50 bg-indigo-50/50 px-2 py-1 text-[11px] font-medium text-indigo-600 shadow-sm transition-colors hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-70 ${
-              isRetagging ? 'animate-pulse' : ''
-            }`}
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={handleRetagWithAi}
-            disabled={isRetagging}
-          >
-            {isRetagging ? (
-              <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Sparkles className="h-3.5 w-3.5" />
+              </button>
             )}
-            <span>{isRetagging ? '✨ AI 思考中...' : '✨ AI 智能打标'}</span>
-          </button>
+
+            <button
+              type="button"
+              className={`ml-auto flex items-center gap-1.5 rounded-md border border-indigo-100/50 bg-indigo-50/50 px-2 py-1 text-[11px] font-medium text-indigo-600 shadow-sm transition-colors hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-70 ${
+                isRetagging ? 'animate-pulse' : ''
+              }`}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={handleRetagWithAi}
+              disabled={isRetagging}
+            >
+              {isRetagging ? (
+                <LoaderCircle className="h-3 w-3 animate-spin" />
+              ) : (
+                <Sparkles size={12} />
+              )}
+              <span>{isRetagging ? '✨ AI 思考中...' : 'AI 重新审视'}</span>
+            </button>
+          </div>
+
+          <div className="h-px w-full bg-zinc-100" />
         </div>
-      </div>
 
-      <EditorToolbar editor={editorInstance} />
+        <EditorToolbar editor={editorInstance} />
 
-      <FluxEditor
-        documentKey={blockId ?? 'new'}
-        initialContent={content}
-        onEditorReady={setEditorInstance}
-        onChange={(nextValue) => {
-          setContent(nextValue.html)
-        }}
-      />
-    </motion.section>
+        <FluxEditor
+          key={activeDocumentKey}
+          documentKey={activeDocumentKey}
+          initialContent={block?.content ?? content}
+          onEditorReady={setEditorInstance}
+          onChange={(nextValue) => {
+            setContent(nextValue.html)
+          }}
+        />
+      </MotionSection>
+
+      <AnimatePresence>
+        {peekBlock ? (
+          <MotionAside
+            initial={{ x: '100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '100%' }}
+            transition={{ type: 'spring', stiffness: 280, damping: 30 }}
+            className="fixed top-0 right-0 h-screen w-[500px] overflow-y-auto border-l border-zinc-200/80 bg-white px-10 pt-6 pb-10 shadow-[-20px_0_60px_-15px_rgba(0,0,0,0.1)] z-50 md:w-[600px]"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setPeekBlockId(null)}
+                className="rounded-full px-3 py-1.5 text-xs text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700"
+              >
+                × 关闭
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  navigate(`/write?id=${peekBlock.id}`)
+                  setPeekBlockId(null)
+                }}
+                className="rounded-full px-3 py-1.5 text-xs font-medium text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900"
+              >
+                ✏️ 全屏编辑此笔记
+              </button>
+            </div>
+
+            <h2 className="mb-4 mt-6 text-2xl font-semibold text-zinc-900">
+              {peekBlock.title || 'Untitled Note'}
+            </h2>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {editableDimensions.flatMap((dimension) =>
+                peekDimensions[dimension].map((value) => (
+                  <span
+                    key={`peek-${peekBlock.id}-${dimension}-${value}`}
+                    className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-medium ${dimensionStyles[dimension]}`}
+                  >
+                    {value}
+                  </span>
+                )),
+              )}
+            </div>
+
+            {peekBlockRevisions.length ? (
+              <div className="mt-6 rounded-3xl border border-zinc-200/80 bg-zinc-50/80 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-400">Assimilation Trail</div>
+                    <div className="mt-1 text-sm font-medium text-zinc-900">
+                      最近 {peekBlockRevisions.length} 次同化回看
+                    </div>
+                  </div>
+                  {selectedRevision && !selectedRevision.rolledBackAt ? (
+                    <button
+                      type="button"
+                      onClick={handleRollbackFromDrawer}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-[11px] font-medium text-zinc-600 transition hover:border-zinc-300 hover:bg-zinc-100"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      撤销当前记录
+                    </button>
+                  ) : null}
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {peekBlockRevisions.map((revision) => (
+                    <button
+                      key={revision.id}
+                      type="button"
+                      onClick={() => setSelectedRevisionId(revision.id)}
+                      className={`rounded-full border px-3 py-1.5 text-[11px] font-medium transition ${
+                        selectedRevision?.id === revision.id
+                          ? 'border-zinc-900 bg-zinc-900 text-white'
+                          : 'border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:bg-zinc-100'
+                      }`}
+                    >
+                      {formatRevisionTime(revision.createdAt)}
+                    </button>
+                  ))}
+                </div>
+
+                {selectedRevision ? (
+                  <div className="mt-4 space-y-4">
+                    <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
+                      <span className="inline-flex items-center gap-1 rounded-full border border-zinc-200 bg-white px-2.5 py-1">
+                        <Clock3 className="h-3.5 w-3.5" />
+                        {formatRevisionTime(selectedRevision.createdAt)}
+                      </span>
+                      <span
+                        className={`rounded-full border px-2.5 py-1 font-medium ${
+                          selectedRevision.rolledBackAt
+                            ? 'border-amber-200 bg-amber-50 text-amber-700'
+                            : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                        }`}
+                      >
+                        {selectedRevision.rolledBackAt ? '已撤销' : '仍在生效'}
+                      </span>
+                      {selectedRevision.poolName ? (
+                        <span className="rounded-full border border-zinc-200 bg-white px-2.5 py-1">
+                          {selectedRevision.poolName}
+                        </span>
+                      ) : null}
+                    </div>
+
+                    {selectedRevision.contextParagraph ? (
+                      <div className="rounded-2xl border border-indigo-100 bg-indigo-50/70 px-4 py-3">
+                        <div className="text-[11px] uppercase tracking-[0.18em] text-indigo-500">触发段落</div>
+                        <p className="mt-2 text-sm leading-6 text-indigo-900">
+                          {selectedRevision.contextParagraph}
+                        </p>
+                      </div>
+                    ) : null}
+
+                    <AssimilationDiffPanel
+                      beforeContent={selectedRevision.beforeContent}
+                      afterContent={selectedRevision.afterContent}
+                      beforeLabel="当时母体"
+                      afterLabel="同化结果"
+                      compact
+                    />
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {peekBlock.content?.trim() ? (
+              <div
+                className="prose-readable mt-8 text-[15px] leading-relaxed text-zinc-700"
+                dangerouslySetInnerHTML={{ __html: peekBlock.content }}
+              />
+            ) : (
+              <div className="mt-8 text-sm font-light leading-relaxed text-zinc-500">
+                这篇笔记暂时还没有正文内容。
+              </div>
+            )}
+          </MotionAside>
+        ) : null}
+      </AnimatePresence>
+    </>
   )
 }
