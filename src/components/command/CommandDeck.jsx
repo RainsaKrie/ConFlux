@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+﻿import { useEffect, useMemo, useState } from 'react'
 import { Command } from 'cmdk'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Binary, Bot, Compass, FileSearch, Search } from 'lucide-react'
@@ -12,21 +12,21 @@ const actions = [
   {
     id: 'go-feed',
     label: '新建闪念',
-    description: '跳转到 Feed',
+    description: '打开知识流',
     icon: Compass,
     run: (navigate) => navigate('/feed'),
   },
   {
     id: 'go-write',
     label: '空白画布写作',
-    description: '跳转到 Editor',
+    description: '打开写作场',
     icon: Bot,
     run: (navigate) => navigate('/write'),
   },
   {
     id: 'go-graph',
-    label: '打开星系图谱',
-    description: '跳转到 Graph',
+    label: '打开关系图谱',
+    description: '打开关系图',
     icon: Binary,
     run: (navigate) => navigate('/graph'),
   },
@@ -108,7 +108,7 @@ export function CommandDeck({ isOpen, onOpenChange }) {
             >
               <Command
                 shouldFilter={false}
-                label="Global Command Deck"
+                label="全局指令台"
                 className="max-h-[70vh] overflow-hidden"
               >
                 <div className="border-b border-zinc-100">
@@ -124,7 +124,7 @@ export function CommandDeck({ isOpen, onOpenChange }) {
                 <Command.List className="max-h-[56vh] overflow-y-auto px-3 py-3">
                   <Command.Group className="mb-4">
                     <div className="px-3 pb-2 text-[11px] uppercase tracking-[0.22em] text-zinc-400">
-                      Actions
+                      动作
                     </div>
                     <div className="space-y-1">
                       {actions.map((action) => {
@@ -138,7 +138,7 @@ export function CommandDeck({ isOpen, onOpenChange }) {
                             className="flex cursor-pointer items-center gap-3 rounded-xl px-3 py-3 text-sm text-zinc-700 outline-none data-[selected=true]:bg-zinc-100 data-[selected=true]:text-zinc-900"
                           >
                             {iconElement}
-                            <span className="flex-1">{`➜ ${action.label}`}</span>
+                            <span className="flex-1">{`→ ${action.label}`}</span>
                             <span className="text-xs text-zinc-400">{action.description}</span>
                           </Command.Item>
                         )
@@ -148,7 +148,7 @@ export function CommandDeck({ isOpen, onOpenChange }) {
 
                   <Command.Group>
                     <div className="px-3 pb-2 text-[11px] uppercase tracking-[0.22em] text-zinc-400">
-                      Knowledge Base
+                      知识库
                     </div>
                     {knowledgeResults.length > 0 ? (
                       <div className="space-y-1">
@@ -161,7 +161,7 @@ export function CommandDeck({ isOpen, onOpenChange }) {
                           >
                             <Search className="h-4 w-4 shrink-0 text-zinc-300" />
                             <div className="min-w-0 flex-1">
-                              <div className="truncate text-sm font-medium text-zinc-900">{block.title || 'Untitled Note'}</div>
+                              <div className="truncate text-sm font-medium text-zinc-900">{block.title || '未命名笔记'}</div>
                             </div>
                             <div className="max-w-[220px] truncate text-xs text-zinc-400">{buildSnippet(block)}</div>
                           </Command.Item>

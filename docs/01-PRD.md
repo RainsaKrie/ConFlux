@@ -1,33 +1,47 @@
 ﻿# Flux 产品文档
 
-当前产品基线：`v0.5.1`
+文档基线：`v1.0 稳定化整理版`
 
 ## 1. 产品定位
 
-Flux 是一个面向高频思考者的 Agentic Knowledge Flow 工具。它不把知识塞进层层文件夹，而是把每一条知识都视为可被重组、可被引用、可被 AI 重新解释的扁平知识块。
+Flux 是一个面向高频思考者的 Agentic Knowledge Flow 工具。
 
-当前产品目标不是做一个“更像文件夹的笔记软件”，而是验证三件事：
+它不以文件夹树组织知识，而是把每一条内容都视作可被重组、可被引用、可被回流更新的扁平知识块。当前产品目标不是把体验做回传统笔记软件，而是验证以下主张是否成立：
 
-- 扁平知识块是否可以通过多维标签与关系推导形成高效组织。
-- AI 是否可以在 BYOK 前提下，为知识块完成自动命名、自动打标、透镜摘要与局部回流。
-- `/feed`、`/write`、`/graph` 三个视角是否能形成完整闭环。
+- 扁平知识块可以通过多维标签、引用关系与运行时推导形成可持续组织。
+- AI 应只承担克制、局部、可确认的任务，而不是吞掉整篇上下文做重型分析。
+- `/feed`、`/write`、`/graph` 三个视角可以构成一个低压迫、可扩展的知识流闭环。
 
-## 2. 当前版本共识
+## 2. 版本校正说明
 
-截至 `v0.5.1`，Flux 的产品共识如下：
+本轮文档修正的第一原则是先把版本叙事拉直。
+
+- `v0.1 ~ v0.7` 可以视为早期相对线性的里程碑。
+- `v0.8`、`v0.9`、`v1.0` 不是历史上严格切开的独立发布包，而是对已经合入代码主链的能力做回顾性命名。
+- 当前代码基线应理解为：已经包含 `v0.9` 的段落级本地推荐漏斗，以及 `v1.0` 的长文语义切块与线程串联；同时仍残留一部分本应属于 `v0.8` 的文案、术语与体验收口债务。
+- `package.json` 中的 `0.0.0` 不是产品版本真相；版本真相以 [`04-CHANGELOG.md`](./04-CHANGELOG.md) 为准。
+
+这意味着：后续开发不要再把 `v0.8`、`v0.9`、`v1.0` 当成三次干净的已发布版本，而应把当前状态称为 `v1.0 稳定化阶段`。
+
+## 3. 当前产品基线
+
+截至当前代码状态，Flux 的产品共识如下：
 
 - 视觉基线是 `Zen Canvas`：浅灰背景、白色卡片、大留白、低压迫交互。
-- 数据基线是扁平 `fluxBlocks`，不引入文件夹树和 `parentId`。
-- 状态基线优先走 Zustand，跨页面 UI 状态只在必要时进入 store。
+- 数据基线是扁平 `fluxBlocks`，不引入文件夹树、不引入 `parentId`。
+- 状态基线优先走 Zustand，跨页面运行时状态只在必要时进入 store。
 - AI 基线是 `BYOK`：前端直连兼容 OpenAI Chat Completions 的接口，不依赖中转后端。
+- 智能能力默认遵循“本地预筛 -> 隐蔽提示 -> 用户确认 -> 精确调用模型”的漏斗模型。
+- 超长输入默认不允许直接落成单一巨型 block，而要先经过本地切块与线程串联。
+- `stage / source` 已进入数据模型，并已在 `/write`、`/feed`、`/graph` 以低存在感方式提供可见与可筛选入口。
 
-## 3. 核心对象
+## 4. 核心对象
 
-### 3.1 Flux Block
+### 4.1 Flux Block
 
-Flux 的最小知识单元是 `block`。每个 block 都是独立对象，不承担树状父子关系。
+`block` 是 Flux 的最小知识单元。它是独立对象，不承担树状父子关系。
 
-当前 block 核心字段：
+当前核心字段包括：
 
 - `id`
 - `title`
@@ -35,8 +49,9 @@ Flux 的最小知识单元是 `block`。每个 block 都是独立对象，不承
 - `dimensions`
 - `createdAt`
 - `updatedAt`
+- `revisions`
 
-其中 `dimensions` 当前已规范化为：
+其中 `dimensions` 当前规范为：
 
 - `domain`
 - `format`
@@ -44,112 +59,102 @@ Flux 的最小知识单元是 `block`。每个 block 都是独立对象，不承
 - `stage`
 - `source`
 
-界面主流程当前主要暴露 `domain / format / project`，但底层模型已允许更宽的正交维度继续扩展。
-
-### 3.2 Gravity Pool
+### 4.2 Gravity Pool
 
 `Gravity Pool` 是一组筛选条件的持久化快照，不是文件夹，也不是静态集合。
 
-它保存的是“观察视角”，而不是知识所有权：
+它保存的是“观察视角”，不是“知识所有权”：
 
 - 用户可以一键回到某组关注主题。
 - 系统保存的是过滤器，而不是 block 的归属关系。
+- 当前 Pool 语境会贯穿 Feed、Write、Graph 与局部同化事件。
 
-## 4. 当前三大场景
+## 5. 当前三大场景
 
-### 4.1 Feed：知识流入口
+### 5.1 Feed
 
-`/feed` 当前负责：
+`/feed` 是知识流入口，当前负责：
 
-- Omni Filter 全文搜索与标签交集筛选。
-- Quick Capture 吸顶式输入流。
-- Grid / List 双视图切换。
-- 基于引用与维度重叠推导关系。
+- `Omni Filter` 全文搜索与标签交集筛选
+- `Quick Capture` 吸顶式输入流
+- Grid / List 双视图切换
+- 基于引用与维度重叠推导关系
+- 超长文本的前端切块入库与线程串联
 
 当前体验标准：
 
 - List 模式必须保持高密度、可读、可收缩。
-- 长文本只能截断，不能把右侧元数据挤出屏幕。
-- 关系 Hover Card 不得被相邻行或父容器裁切。
+- 长文本不能撑爆布局，右侧元数据不应被挤出屏幕。
+- 超长输入需要在提交瞬间被拆成可渲染、可检索的小块。
 
-### 4.2 Write：沉浸写作场
+### 5.2 Write
 
-`/write` 当前负责：
+`/write` 是沉浸写作场，当前负责：
 
-- 自动创建 block。
-- 自动保存标题与正文。
-- 管理当前笔记标签。
-- 挂载 TipTap 与自定义 `Adaptive Lens`。
-- 提供右侧 `Peek Drawer` 并屏参考。
-- 提供 `Phantom Weaving` 与 `Crystal Assimilation` 的主要交互入口。
+- 自动创建 block
+- 自动保存标题与正文
+- 管理当前笔记主维度标签，并以低存在感方式补充 `stage / source`
+- 挂载 TipTap 与 `Adaptive Lens`
+- 提供右侧 `Peek Drawer` 并屏参考
+- 提供段落级 `Phantom Weaving` 与 `Crystal Assimilation` 的最小闭环
 
-### 4.3 Graph：关系总览
+当前体验标准：
 
-`/graph` 当前负责：
+- 编辑器主体必须保持纯净，不允许字级虚线、Hover Card 等旧式噪音重新侵入正文。
+- 第一阶关联推荐只能本地执行，且只允许扫描当前自然段落。
+- 大模型只在用户明确点击同化动作后才应介入。
 
-- 以网络视角投影扁平知识块。
-- 展示引用关系与维度重叠。
-- 帮助判断知识密度与结构张力。
+### 5.3 Graph
 
-它目前仍是探索视图，不承担主要编辑职责。
+`/graph` 是关系总览，当前负责：
 
-## 5. 当前已落地能力
+- 以网络视角投影扁平知识块
+- 展示引用关系与维度重叠
+- 帮助判断知识密度、线程聚集与结构张力
 
-截至 `v0.5.1`，以下能力已经进入实现态：
+它目前仍是探索视图，不承担主要编辑职责，但已经进入可持续迭代阶段。
 
-- Zustand + persist 本地持久化。
-- Feed 的 Omni Filter、Quick Capture、Grid/List 视图切换。
-- Editor 自动保存、标签管理、AI 重新审视。
-- `@` 提及搜索与 `Adaptive Lens` 流式摘要。
-- Peek Drawer 右侧原文参考面板。
-- `contentToPlainText()` 对透镜摘要的降维提取。
-- `Phantom Weaving` 基于 `Entity Lexicon` 的静默嗅探、虚线 Decoration、Hover Card。
-- `Crystal Assimilation` 预览确认流、成功挂件、最近 revision 与一键回滚。
-- Adaptive Lens 从厚重卡片脱水为引述流。
-- Graph 视图的 `Semantic Zoom + Spotlight Search + Cluster Framing`。
-- `/graph` 的模块化工程收口，核心逻辑已拆到 `src/features/graph/`。
+## 6. 当前已落地能力
 
-## 6. 当前边界与限制
+截至当前代码基线，以下能力已经进入实现态：
+
+- Zustand + persist 本地持久化
+- Feed 的 `Omni Filter`、`Quick Capture`、Grid/List 视图切换
+- Quick Capture 的 AI 自动命名与主维度打标
+- `Semantic Auto-Chunking & Threading`
+- Editor 自动保存、标签管理、AI 重新审视
+- `@` 提及搜索与 `Adaptive Lens` 只读引用节点
+- 右侧 `Peek Drawer` 并屏参考阅读
+- `contentToPlainText()` 对引用节点 `excerpt / summary / title` 的降维提取
+- 段落级 `Phantom Weaving`：`2500ms debounce + 当前段落 + Entity Lexicon + Fuse.js`
+- 深层关联只以右下角微型指示器浮现，点击后才打开 Drawer
+- `Crystal Assimilation` 的预览确认流、版本历史、恢复与来源追溯
+- Graph 视图的 `Semantic Zoom + Spotlight Search + Cluster Framing`
+- `activePoolContext` 与 `recentPoolEvents` 形成跨视图运行时连续体验
+
+## 7. 当前边界
 
 - 仍然是纯前端 MVP，没有后端、同步、权限和协作能力。
-- 维度模型已扩展，但 UI 还没有完整暴露 `stage / source`。
-- `Phantom Weaving` 当前只覆盖标题级嗅探，不覆盖更深层语义召回。
-- `Crystal Assimilation` 已具备预览、回滚与跨会话 revision 回看，但还不是完整版本系统。
-- Graph 目前可用，但信息面板、聚类与筛选联动仍偏初级。
+- `stage / source` 已进入模型，并已在 `/write`、`/feed` 与 `/graph` 完成第一轮低存在感接入；但还没有独立的批量管理与更深层自动化能力。
+- `Phantom Weaving` 当前是本地高置信推荐，不是泛化语义检索，也没有向量数据库支撑。
+- `Crystal Assimilation` 已具备预览、回滚与版本回看，但还不是完整版本系统。
+- Graph 当前可用，但在更大规模节点下仍需要继续关注渲染与筛选联动性能。
+- 站内仍有零星旧文案、旧术语与体验语气尚未完全收口。
 
-## 7. 版本推进原则
+## 8. 里程碑视图
 
-版本轴以 [04-CHANGELOG.md](/d:/桌面/flux-workspace/docs/04-CHANGELOG.md) 为唯一准绳，当前顺序为：
+版本轴的唯一准绳是 [`04-CHANGELOG.md`](./04-CHANGELOG.md)。当前应这样理解：
 
-- `v0.1` Zen Canvas MVP 骨架
-- `v0.2` 沉浸写作与显式引用
-- `v0.3` Phantom Weaving 原型
-- `v0.4` Crystal Assimilation 闭环
-- `v0.5` 零压迫知识流
-- `v0.5.1` Graph 工程化收口
-- `v0.6+` 质量控制与统一引用语言
+- `v0.1 ~ v0.7`：从骨架、引用、原型推荐、同化闭环一路推进到质量控制、版本历史与维度管理补强。
+- `v0.8`：引用语言与体验收口的目标已经部分进入代码，但没有作为一次完整收口发布真正结束。
+- `v0.9`：段落级本地推荐、右下角轻提示、Peek Drawer 核对与“确认后再调模型”的漏斗已进入主链。
+- `v1.0`：长文语义切块、线程标签、批量落盘与避免逐块 AI 洪峰的能力已进入主链。
 
-## 8. 下一步产品建议
+## 9. 当前优先级
 
-按照当前状态，下一步优先级应分成两层：
+下一阶段优先级应固定为：
 
-1. `v0.5` 已完成，下一步正式进入 `v0.6`。
-2. `v0.6` 的第一优先级已经完成：`Phantom Weaving` 已升级为 `Entity Lexicon Match`。
-3. `v0.6` 的第二优先级是 `Crystal Assimilation` 的 Diff Visualization、持久历史、抽屉核对整合与质量控制。
-4. `v0.7` 再补 `Phantom Weaving` 的测试样本与命中质量调优。
-5. `v0.8` 再统一 `Adaptive Lens`、Hover Card、Peek Drawer、成功挂件的脚注式引用语言。
-
-## 9. `v0.5` 完成确认与 `v0.6` 入口
-
-当前 `v0.5` 已完成。它的验收事实是：
-
-- 用户可以从某个 Pool 进入 Feed。
-- 用户可以在这个观察主题下进入 Write 并继续思考。
-- `Phantom Weaving` 会优先浮出与该主题相关的母体。
-- 同化成功后，Feed / Graph 能低压迫地显示“这个主题里的知识网络刚刚被更新了”。
-
-因此，`v0.6` 的真正入口变成：
-
-- 用 Diff Visualization 和更可靠的 revision 历史增强 `Crystal Assimilation`。
-- 用统一引用语言降低交互碎裂感。
-- 在下一轮继续评估 `Entity Lexicon` 的误报与漏报表现。
+1. 先收口站内旧文案、乱码、历史交互术语与 docs 漂移。
+2. 为 `Phantom Weaving` 与长文切块补更多固定样本与回归验证。
+3. 继续压低页面层耦合与遗留样例文件带来的维护成本。
+4. 在不增加交互负担的前提下，谨慎补充 `stage / source` 的批量管理与自动化能力。

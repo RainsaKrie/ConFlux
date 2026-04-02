@@ -3,6 +3,27 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { Search, X } from 'lucide-react'
 
 const MotionDiv = motion.div
+const tokenStyles = {
+  domain: 'bg-blue-50 text-blue-700',
+  format: 'bg-zinc-100 text-zinc-700',
+  project: 'bg-purple-50 text-purple-700',
+  stage: 'border border-zinc-200/80 bg-white text-zinc-500',
+  source: 'border border-zinc-200/70 bg-white text-zinc-400',
+}
+const tokenRemoveStyles = {
+  domain: 'text-blue-500 hover:text-blue-700',
+  format: 'text-zinc-400 hover:text-zinc-700',
+  project: 'text-purple-500 hover:text-purple-700',
+  stage: 'text-zinc-400 hover:text-zinc-600',
+  source: 'text-zinc-300 hover:text-zinc-500',
+}
+const dimensionLabels = {
+  domain: '领域',
+  format: '体裁',
+  project: '项目',
+  stage: '阶段',
+  source: '来源',
+}
 
 function buildTokenKey(token) {
   return `${token.dimension}:${token.value}`
@@ -62,13 +83,18 @@ export function OmniFilterBar({
             {activeTokens.map((token) => (
               <div
                 key={buildTokenKey(token)}
-                className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700"
+                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${
+                  tokenStyles[token.dimension] ?? tokenStyles.domain
+                }`}
               >
+                <span className="opacity-70">{dimensionLabels[token.dimension] ?? '标签'}</span>
                 <span>{`#${token.value}`}</span>
                 <button
                   type="button"
                   onClick={() => onRemoveToken(buildTokenKey(token))}
-                  className="rounded-full text-blue-500 transition hover:text-blue-700"
+                  className={`rounded-full transition ${
+                    tokenRemoveStyles[token.dimension] ?? tokenRemoveStyles.domain
+                  }`}
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -102,7 +128,7 @@ export function OmniFilterBar({
                   commitSuggestion(filteredSuggestions[selectedIndex])
                 }
               }}
-              placeholder="🔍 搜索内容... 或输入 # 添加标签条件"
+              placeholder="搜索内容... 或输入 # 添加筛选标签"
               className="min-w-[220px] flex-1 bg-transparent text-sm text-zinc-900 outline-none placeholder:text-zinc-400"
             />
             {onSaveView ? (
@@ -143,7 +169,12 @@ export function OmniFilterBar({
                     index === selectedIndex ? 'bg-zinc-100 text-zinc-900' : 'text-zinc-600 hover:bg-zinc-50'
                   }`}
                 >
-                  <span className="font-medium">{`#${suggestion.value}`}</span>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] text-zinc-500">
+                      {dimensionLabels[suggestion.dimension] ?? '标签'}
+                    </span>
+                    <span className="truncate font-medium">{`#${suggestion.value}`}</span>
+                  </div>
                   <span className="text-[11px] text-zinc-400">{suggestion.count}</span>
                 </button>
               ))}

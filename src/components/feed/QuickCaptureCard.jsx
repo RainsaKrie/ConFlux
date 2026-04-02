@@ -20,7 +20,7 @@ export function QuickCaptureCard({
         <div className="text-xs text-zinc-400">
           {isSubmitting
             ? '\u6b63\u5728\u8c03\u7528 AI \u9759\u9ed8\u6253\u6807...'
-            : 'Quick Capture \u63d0\u4ea4\u540e\u4f1a\u81ea\u52a8\u751f\u6210\u6807\u7b7e'}
+            : '\u63d0\u4ea4\u540e\u4f1a\u81ea\u52a8\u8865\u5168\u4e3b\u7ef4\u5ea6\u6807\u7b7e'}
         </div>
         <div className="inline-flex items-center gap-2 rounded-full bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-600">
           {isSubmitting ? (

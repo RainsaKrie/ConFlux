@@ -1,7 +1,7 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react'
 import ForceGraph2D from 'react-force-graph-2d'
 import { motion } from 'framer-motion'
-import { ArrowUpRight, Orbit, Search, Sparkles, X } from 'lucide-react'
+import { ArrowUpRight, Hash, Orbit, Search, Sparkles, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { GRAPH_PHYSICS, GRAPH_VIEW } from '../features/graph/constants'
 import { paintGraphNodePointerArea, renderGraphNode } from '../features/graph/rendering'
@@ -15,6 +15,7 @@ import {
   buildGraphData,
   getRelationSnapshot,
   relationToneStyles,
+  secondaryRelationDimensions,
   visibleRelationDimensions,
 } from '../utils/relations'
 
@@ -58,6 +59,12 @@ export function GraphPage() {
         .filter(([dimension]) => visibleRelationDimensions.includes(dimension))
         .flatMap(([dimension, values]) => values.map((value) => ({ dimension, value })))
         .slice(0, 4)
+    : []
+  const secondaryMetadata = activeBlock
+    ? Object.entries(activeBlock.dimensions)
+        .filter(([dimension]) => secondaryRelationDimensions.includes(dimension))
+        .flatMap(([dimension, values]) => values.map((value) => ({ dimension, value })))
+        .slice(0, 3)
     : []
   const activeNeighborIds = useMemo(() => {
     if (!activeBlock) return new Set()
@@ -189,7 +196,11 @@ export function GraphPage() {
   )
 
   const getLinkWidth = useMemo(
-    () => (link) => (activeNode && linkTouchesNode(link, activeNode.id) ? 1.8 : 1),
+    () => (link) => {
+      const baseWidth = link.type === 'source' ? 2.8 : 1
+      if (!activeNode) return baseWidth
+      return linkTouchesNode(link, activeNode.id) ? baseWidth + 0.8 : baseWidth
+    },
     [activeNode],
   )
 
@@ -200,9 +211,9 @@ export function GraphPage() {
           highlightNodes.has(getGraphLinkNodeId(link.source)) || highlightNodes.has(getGraphLinkNodeId(link.target))
         if (!touchesMatch) return 0
       }
-      if (!activeNode) return link.type === 'lens' || link.type === 'reference' ? 2 : 1
+      if (!activeNode) return link.type === 'lens' || link.type === 'reference' ? 2 : link.type === 'source' ? 0 : 1
       if (!linkTouchesNode(link, activeNode.id)) return 0
-      return link.type === 'lens' || link.type === 'reference' ? 2 : 1
+      return link.type === 'lens' || link.type === 'reference' ? 2 : link.type === 'source' ? 0 : 1
     },
     [activeNode, highlightNodes, isSearchActive],
   )
@@ -283,7 +294,7 @@ export function GraphPage() {
             ) : null}
           </div>
           <div className="text-xs font-normal text-zinc-400">
-            {graphData.nodes.length} nodes / {graphData.links.length} links
+            {graphData.nodes.length} 个节点 / {graphData.links.length} 条关联线
           </div>
         </div>
 
@@ -389,6 +400,21 @@ export function GraphPage() {
               ))}
             </div>
 
+            {secondaryMetadata.length ? (
+              <div className="flex flex-wrap items-center gap-2 text-zinc-300">
+                <span className="select-none text-[10px]">|</span>
+                {secondaryMetadata.map((tag) => (
+                  <span
+                    key={`${activeBlock.id}-${tag.dimension}-${tag.value}`}
+                    className="inline-flex items-center gap-1 text-[10px] text-zinc-400/80"
+                  >
+                    <Hash size={8} strokeWidth={2} className="shrink-0" />
+                    <span>{tag.value}</span>
+                  </span>
+                ))}
+              </div>
+            ) : null}
+
             <div className={`rounded-2xl p-3 ${dominantTone.badge}`}>
               <div className="text-[10px] uppercase tracking-[0.2em] opacity-70">当前主关系</div>
               <div className="mt-1 text-sm font-medium">{relationSnapshot.dominant.label}</div>
@@ -435,7 +461,7 @@ export function GraphPage() {
           <div className="flex h-full flex-col items-start justify-center gap-3 text-zinc-400">
             <div className="text-[11px] uppercase tracking-[0.24em]">关联透视</div>
             <p className="text-sm leading-6">
-              把鼠标悬停在图中的某个节点上，这里会显示和 Feed 一致的关系语义、正文摘要与主要关联理由。点击节点后可以锁定右侧面板并滚动查看细节。
+              把鼠标悬停在图中的某个节点上，这里会显示和知识流一致的关系语义、正文摘要与主要关联理由。点击节点后可以锁定右侧面板并滚动查看细节。
             </p>
           </div>
         )}

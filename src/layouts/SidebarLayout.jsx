@@ -1,18 +1,20 @@
-import { useEffect, useMemo, useState } from 'react'
+﻿import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Binary, Bot, CircleDot, Command, Compass, Settings, X } from 'lucide-react'
 import { NavLink, Outlet, useNavigate, useSearchParams } from 'react-router-dom'
-import { CommandDeck } from '../components/command/CommandDeck'
 import { buildPoolContext, buildPoolContextKey, encodePoolFilters, poolFiltersToTokens } from '../features/pools/utils'
 import { useFluxStore } from '../store/useFluxStore'
 import { DEFAULT_AI_CONFIG, readAiConfig, saveAiConfig } from '../utils/aiConfig'
 
 const MotionDiv = motion.div
+const LazyCommandDeck = lazy(() =>
+  import('../components/command/CommandDeck').then((module) => ({ default: module.CommandDeck })),
+)
 
 const navItems = [
-  { to: '/feed', label: 'Feed', description: '动态流', icon: Compass },
-  { to: '/write', label: 'Editor', description: '沉浸写', icon: Bot },
-  { to: '/graph', label: 'Graph', description: '星谱', icon: Binary },
+  { to: '/feed', label: '知识流', description: '动态流', icon: Compass },
+  { to: '/write', label: '写作场', description: '沉浸创作', icon: Bot },
+  { to: '/graph', label: '关系图', description: '星图', icon: Binary },
 ]
 
 export function SidebarLayout() {
@@ -74,12 +76,12 @@ export function SidebarLayout() {
                   <div className="font-['Space_Grotesk',_'Noto_Sans_SC',_sans-serif] text-lg font-semibold tracking-tight text-zinc-950">
                     Flux
                   </div>
-                  <div className="text-xs text-zinc-400">Agentic Knowledge Flow</div>
+                  <div className="text-xs text-zinc-400">主动生长的知识流</div>
                 </div>
               </div>
 
               <div className="mt-8">
-                <div className="mb-3 text-[11px] uppercase tracking-[0.24em] text-zinc-400">Navigation</div>
+                <div className="mb-3 text-[11px] uppercase tracking-[0.24em] text-zinc-400">导航</div>
                 <nav className="space-y-1.5">
                   {navItems.map((item) => {
                     const Icon = item.icon
@@ -109,7 +111,7 @@ export function SidebarLayout() {
               </div>
 
               <div className="mt-8">
-                <div className="mb-3 text-[11px] uppercase tracking-[0.24em] text-zinc-400">Gravity Pools</div>
+                <div className="mb-3 text-[11px] uppercase tracking-[0.24em] text-zinc-400">观察主题</div>
                 <div className="space-y-1.5">
                   {savedPools.map((pool) => {
                     const isActive = activePoolId === pool.id
@@ -152,7 +154,7 @@ export function SidebarLayout() {
                               removePool(pool.id)
                             }}
                             className="mt-0.5 rounded-full p-1 text-zinc-300 opacity-0 transition hover:bg-zinc-200 hover:text-zinc-600 group-hover:opacity-100"
-                            aria-label={`Remove ${pool.name}`}
+                            aria-label={`移除观察主题 ${pool.name}`}
                           >
                             <X className="h-3.5 w-3.5" />
                           </button>
@@ -164,7 +166,7 @@ export function SidebarLayout() {
               </div>
 
               <div className="mt-auto rounded-3xl border border-zinc-200 bg-white p-4 shadow-sm">
-                <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">Command Deck</div>
+                <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">指令台</div>
                 <div className="mt-2 text-sm leading-6 text-zinc-500">Cmd/Ctrl + K 打开全局指令台</div>
                 <button
                   type="button"
@@ -182,7 +184,7 @@ export function SidebarLayout() {
                 className="mt-3 inline-flex items-center gap-2 self-start rounded-full px-2 py-1.5 text-[11px] font-medium text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
               >
                 <Settings className="h-3.5 w-3.5" />
-                <span>设置大模型引擎</span>
+                <span>配置大模型引擎</span>
               </button>
             </div>
           </aside>
@@ -191,13 +193,13 @@ export function SidebarLayout() {
             {!hasApiKey ? (
               <div className="sticky top-0 z-50 -mx-6 -mt-6 mb-6 border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 lg:-mx-8">
                 <div className="flex items-center justify-between gap-4">
-                  <span>✨ 欢迎进入 Flux。系统检测到尚未配置大模型引擎，自动打标与动态透镜功能已被挂起。</span>
+                  <span>欢迎进入 Flux。系统检测到尚未配置大模型引擎，自动打标与原文更新能力暂时不可用。</span>
                   <button
                     type="button"
                     onClick={() => setIsSettingsOpen(true)}
                     className="shrink-0 rounded-full bg-amber-100 px-3 py-1.5 text-xs font-medium text-amber-900 transition hover:bg-amber-200"
                   >
-                    立即配置 API ↗
+                    立即配置 API →
                   </button>
                 </div>
               </div>
@@ -208,7 +210,9 @@ export function SidebarLayout() {
         </div>
       </div>
 
-      <CommandDeck isOpen={isCommandOpen} onOpenChange={setIsCommandOpen} />
+      <Suspense fallback={null}>
+        {isCommandOpen ? <LazyCommandDeck isOpen={isCommandOpen} onOpenChange={setIsCommandOpen} /> : null}
+      </Suspense>
 
       <AnimatePresence>
         {isSettingsOpen ? (
@@ -243,7 +247,7 @@ export function SidebarLayout() {
 
               <div className="mt-6 space-y-4">
                 <label className="block">
-                  <span className="mb-1.5 block text-xs font-medium uppercase tracking-[0.18em] text-zinc-400">Base URL</span>
+                  <span className="mb-1.5 block text-xs font-medium uppercase tracking-[0.18em] text-zinc-400">接口地址</span>
                   <input
                     type="text"
                     placeholder="https://api.deepseek.com/v1"
@@ -254,7 +258,7 @@ export function SidebarLayout() {
                 </label>
 
                 <label className="block">
-                  <span className="mb-1.5 block text-xs font-medium uppercase tracking-[0.18em] text-zinc-400">Model Name</span>
+                  <span className="mb-1.5 block text-xs font-medium uppercase tracking-[0.18em] text-zinc-400">模型名称</span>
                   <input
                     type="text"
                     placeholder="deepseek-chat"
@@ -265,7 +269,7 @@ export function SidebarLayout() {
                 </label>
 
                 <label className="block">
-                  <span className="mb-1.5 block text-xs font-medium uppercase tracking-[0.18em] text-zinc-400">API Key</span>
+                  <span className="mb-1.5 block text-xs font-medium uppercase tracking-[0.18em] text-zinc-400">API 密钥</span>
                   <input
                     type="password"
                     placeholder="sk-..."

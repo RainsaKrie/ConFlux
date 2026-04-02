@@ -5,11 +5,13 @@ const dimensionStyles = {
   domain: 'border border-blue-100 bg-blue-50 text-blue-600',
   format: 'border border-zinc-200 bg-zinc-100 text-zinc-500',
   project: 'border border-purple-100 bg-purple-50 text-purple-600',
+  stage: 'border border-zinc-200/70 bg-white text-zinc-500',
 }
 
 export function KnowledgeCard({ block, onOpen, onDelete }) {
   const preview = contentToPlainText(block.content)
-  const visibleDimensions = ['domain', 'format', 'project']
+  const visibleDimensions = ['domain', 'format', 'project', 'stage']
+  const sourceMetadata = (block.dimensions?.source ?? []).slice(0, 2)
 
   return (
     <article className="group relative h-72 rounded-2xl border border-zinc-200/60 bg-white p-6 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
@@ -62,6 +64,16 @@ export function KnowledgeCard({ block, onOpen, onDelete }) {
               )),
             )}
         </div>
+
+        {sourceMetadata.length ? (
+          <div className="mt-3 flex flex-wrap items-center gap-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+            {sourceMetadata.map((value) => (
+              <span key={`${block.id}-source-${value}`} className="text-[10px] text-zinc-400/80">
+                #{value}
+              </span>
+            ))}
+          </div>
+        ) : null}
       </button>
     </article>
   )

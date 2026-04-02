@@ -1,6 +1,6 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Blocks, CircleDot, LayoutGrid, Link, List, LoaderCircle, Orbit, Sparkles } from 'lucide-react'
+import { Blocks, CircleDot, Hash, LayoutGrid, Link, List, LoaderCircle, Orbit, Sparkles } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { KnowledgeCard } from '../components/feed/KnowledgeCard'
 import { OmniFilterBar } from '../components/feed/OmniFilterBar'
@@ -21,6 +21,14 @@ import {
   normalizeBlockDimensions,
 } from '../utils/blocks'
 import {
+  buildSemanticChunkTitle,
+  buildThreadId,
+  buildThreadProjectLabel,
+  buildThreadSourceLabel,
+  LONGFORM_CAPTURE_THRESHOLD,
+  splitIntoSemanticChunks,
+} from '../utils/documentChunker'
+import {
   buildRelationMap,
   getRelationSnapshot,
   relationToneStyles,
@@ -32,6 +40,7 @@ const dimensionStyles = {
   domain: 'border border-blue-100 bg-blue-50 text-blue-600',
   format: 'border border-zinc-200 bg-zinc-100 text-zinc-500',
   project: 'border border-purple-100 bg-purple-50 text-purple-600',
+  stage: 'border border-zinc-200/70 bg-white text-zinc-500',
 }
 const MotionSection = motion.section
 const MotionDiv = motion.div
@@ -51,7 +60,7 @@ function collectTagSuggestions(blocks) {
   const counts = new Map()
 
   blocks.forEach((block) => {
-    ;['domain', 'format', 'project'].forEach((dimension) => {
+    ;['domain', 'format', 'project', 'stage', 'source'].forEach((dimension) => {
       ;(block.dimensions[dimension] ?? []).forEach((value) => {
         const key = `${dimension}:${value}`
         const current = counts.get(key)
@@ -79,6 +88,32 @@ function formatListDate(value) {
   }).format(date)
 }
 
+function mergeValues(...groups) {
+  return [...new Set(groups.flat().map((value) => value?.trim()).filter(Boolean))]
+}
+
+function mergeWithFallback(baseValues = [], nextValues = [], fallbackValue = '') {
+  if (!nextValues.length) return baseValues
+  return mergeValues(baseValues.filter((value) => value !== fallbackValue), nextValues)
+}
+
+function buildCaptureDimensions(filters = {}, overrides = {}) {
+  const normalized = normalizeBlockDimensions({
+    domain: filters.domain ?? [],
+    format: filters.format ?? [],
+    project: filters.project ?? [],
+    stage: filters.stage ?? [],
+    source: ['Quick Capture'],
+    ...overrides,
+  })
+
+  return {
+    ...normalized,
+    domain: normalized.domain.length ? normalized.domain : ['未分类'],
+    format: normalized.format.length ? normalized.format : ['碎片'],
+  }
+}
+
 export function FeedPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
@@ -99,6 +134,7 @@ export function FeedPage() {
   )
   const fluxBlocks = useFluxStore((state) => state.fluxBlocks)
   const addBlock = useFluxStore((state) => state.addBlock)
+  const addBlocks = useFluxStore((state) => state.addBlocks)
   const deleteBlock = useFluxStore((state) => state.deleteBlock)
   const addPool = useFluxStore((state) => state.addPool)
   const savedPools = useFluxStore((state) => state.savedPools)
@@ -206,51 +242,73 @@ export function FeedPage() {
     const content = capture.trim()
     if (!content) return
 
-    const blockId = buildBlockId()
-    const firstLine = content.split('\n')[0].trim()
-    const fallbackDimensions = normalizeBlockDimensions({
-      domain: ['未分类'],
-      format: ['碎片'],
-      project: [],
-      stage: [],
-      source: ['Quick Capture'],
-    })
-
-    addBlock({
-      id: blockId,
-      title: firstLine.length > 15 ? `${firstLine.slice(0, 15)}...` : firstLine,
-      content,
-      dimensions: fallbackDimensions,
-      updatedAt: getTodayStamp(),
-    })
-
-    resetCaptureComposer()
-
     setIsSubmitting(true)
-    const aiConfig = readAiConfig()
-    if (aiConfig.apiKey?.trim()) {
-      const aiTags = await classifyQuickCapture(content, aiConfig)
-      const dimensions = normalizeBlockDimensions({
-        domain: aiTags.domain,
-        format: aiTags.format,
-        project: aiTags.project,
-        stage: [],
-        source: ['AI AutoTag'],
+    try {
+      const baseDimensions = buildCaptureDimensions(activeFilters)
+      const timestamp = getTodayStamp()
+
+      if (content.length > LONGFORM_CAPTURE_THRESHOLD) {
+        const chunks = splitIntoSemanticChunks(content)
+        const threadId = buildThreadId()
+        const threadProjectLabel = buildThreadProjectLabel(content, threadId)
+        const threadSourceLabel = buildThreadSourceLabel(threadId)
+        const chunkBlocks = chunks.map((chunk, index) => ({
+          id: buildBlockId(),
+          title: buildSemanticChunkTitle(chunk, index, chunks.length),
+          content: chunk,
+          dimensions: buildCaptureDimensions(activeFilters, {
+            ...baseDimensions,
+            project: mergeValues(baseDimensions.project, [threadProjectLabel]),
+            source: mergeValues(baseDimensions.source, [threadSourceLabel]),
+          }),
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        }))
+
+        addBlocks(chunkBlocks)
+        resetCaptureComposer()
+        showCaptureWarning(`已拆分为 ${chunkBlocks.length} 个知识碎块，并通过 ${threadProjectLabel} 串联。`)
+        return
+      }
+
+      const blockId = buildBlockId()
+      const firstLine = content.split('\n')[0].trim()
+
+      addBlock({
+        id: blockId,
+        title: firstLine.length > 15 ? `${firstLine.slice(0, 15)}...` : firstLine,
+        content,
+        dimensions: baseDimensions,
+        createdAt: timestamp,
+        updatedAt: timestamp,
       })
 
-      updateBlock(blockId, (old) => ({
-        title: aiTags.title && aiTags.title.length > 0 ? aiTags.title : old.title,
-        dimensions: {
-          ...dimensions,
-          domain: aiTags.domain?.length ? aiTags.domain : ['未分类'],
-          format: aiTags.format?.length ? aiTags.format : ['碎片'],
-          project: aiTags.project || [],
-        },
-      }))
-    } else {
-      showCaptureWarning('⚠️ 离线保存成功。请配置 API Key 开启自动智能打标')
+      resetCaptureComposer()
+
+      const aiConfig = readAiConfig()
+      if (aiConfig.apiKey?.trim()) {
+        const aiTags = await classifyQuickCapture(content, aiConfig)
+
+        updateBlock(blockId, (old) => ({
+          title: aiTags.title && aiTags.title.length > 0 ? aiTags.title : old.title,
+          dimensions: {
+            ...old.dimensions,
+            domain: aiTags.domain?.length
+              ? mergeWithFallback(baseDimensions.domain, aiTags.domain, '未分类')
+              : old.dimensions.domain,
+            format: aiTags.format?.length
+              ? mergeWithFallback(baseDimensions.format, aiTags.format, '碎片')
+              : old.dimensions.format,
+            project: mergeValues(baseDimensions.project, aiTags.project || []),
+            source: mergeValues(old.dimensions.source, ['AI AutoTag']),
+          },
+        }))
+      } else {
+        showCaptureWarning('离线保存成功。请配置 API 密钥后开启自动智能打标。')
+      }
+    } finally {
+      setIsSubmitting(false)
     }
-    setIsSubmitting(false)
   }
 
   const handleCaptureKeyDown = async (event) => {
@@ -267,7 +325,7 @@ export function FeedPage() {
   }
 
   const activeLabel = useMemo(() => {
-    if (activeTokens.length === 0) return 'Feed'
+    if (activeTokens.length === 0) return '知识流'
     return activeTokens.map((token) => token.value).join(' / ')
   }, [activeTokens])
 
@@ -397,9 +455,10 @@ export function FeedPage() {
               setIsExpanded(true)
               window.requestAnimationFrame(() => captureRef.current?.focus())
             }}
-            className="flex h-12 w-full cursor-text items-center rounded-xl border border-zinc-200/50 bg-white/40 px-4 text-left text-sm text-zinc-400 transition-all hover:border-zinc-300 hover:bg-white hover:shadow-sm"
+            className="flex h-12 w-full cursor-text items-center gap-2 rounded-xl border border-zinc-200/50 bg-white/40 px-4 text-left text-sm text-zinc-400 transition-all hover:border-zinc-300 hover:bg-white hover:shadow-sm"
           >
-            ✨ 记录闪念... (点击或者按快捷键展开)
+            <Sparkles size={12} strokeWidth={2} />
+            <span>记录闪念... (点击或者按快捷键展开)</span>
           </button>
         ) : (
           <div className="rounded-2xl border border-zinc-200/80 bg-white p-4 shadow-md transition-all duration-300">
@@ -421,7 +480,7 @@ export function FeedPage() {
 
             <div className="mt-3 flex items-center justify-between gap-4 text-xs text-zinc-400">
               <div className="flex min-w-0 items-center gap-3">
-                <span>{isSubmitting ? '正在调用 AI 静默打标...' : 'Enter 发送，Shift + Enter 换行'}</span>
+                <span>{isSubmitting ? '正在处理输入并写入知识流...' : 'Enter 发送，Shift + Enter 换行'}</span>
                 <span className="inline-flex items-center gap-2 rounded-full bg-zinc-100 px-3 py-1.5 font-medium text-zinc-600">
                   {isSubmitting ? (
                     <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
@@ -497,6 +556,7 @@ export function FeedPage() {
                   .filter(([dimension]) => visibleRelationDimensions.includes(dimension))
                   .flatMap(([dimension, values]) => values.map((value) => ({ dimension, value })))
                   .slice(0, 3)
+                const sourceMetadata = (block.dimensions?.source ?? []).slice(0, 1)
                 return (
                   <MotionDiv
                     key={block.id}
@@ -564,6 +624,12 @@ export function FeedPage() {
                           </span>
                         ))}
                       </div>
+                      {sourceMetadata.length ? (
+                        <div className="flex items-center gap-1 text-[10px] text-zinc-400/80">
+                          <Hash size={8} strokeWidth={2} />
+                          <span className="max-w-28 truncate">{sourceMetadata[0]}</span>
+                        </div>
+                      ) : null}
                       <span className="text-[11px] text-zinc-400 font-mono tracking-tight w-16 text-right shrink-0 group-hover:text-zinc-600 transition-colors">
                         {formatListDate(block.updatedAt)}
                       </span>

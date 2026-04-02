@@ -1,8 +1,16 @@
 ﻿import { extractBlockRelations } from './blocks'
 
-export const visibleRelationDimensions = ['domain', 'format', 'project']
+export const visibleRelationDimensions = ['domain', 'format', 'project', 'stage']
+export const secondaryRelationDimensions = ['source']
 
 export const relationToneStyles = {
+  source: {
+    orbit: 'border-emerald-200 bg-emerald-50',
+    core: 'bg-emerald-500',
+    badge: 'border border-emerald-100 bg-emerald-50 text-emerald-600',
+    link: 'rgba(16, 185, 129, 0.48)',
+    particle: 'rgba(16, 185, 129, 0.58)',
+  },
   lens: {
     orbit: 'border-amber-200 bg-amber-50',
     core: 'bg-amber-500',
@@ -38,6 +46,13 @@ export const relationToneStyles = {
     link: 'rgba(168, 85, 247, 0.24)',
     particle: 'rgba(168, 85, 247, 0.34)',
   },
+  stage: {
+    orbit: 'border border-amber-100 bg-amber-50/70',
+    core: 'bg-amber-400',
+    badge: 'border border-amber-100 bg-amber-50 text-amber-700',
+    link: 'rgba(245, 158, 11, 0.16)',
+    particle: 'rgba(217, 119, 6, 0.24)',
+  },
   neutral: {
     orbit: 'border-zinc-200 bg-zinc-50',
     core: 'bg-zinc-400',
@@ -48,10 +63,12 @@ export const relationToneStyles = {
 }
 
 export const relationPriority = {
+  source: 6,
   lens: 5,
   reference: 4,
   project: 3,
   domain: 2,
+  stage: 1.5,
   format: 1,
   neutral: 0,
 }
@@ -84,13 +101,21 @@ export function buildRelationMap(blocks) {
   const map = new Map(blocks.map((block) => [block.id, []]))
 
   blocks.forEach((block) => {
+    ;(block.dimensions?.source ?? []).forEach((sourceBlockId) => {
+      const target = byId.get(sourceBlockId)
+      if (!target) return
+
+      pushUnique(map, block.id, createConnection(target, 'source', '稳定关联'))
+      pushUnique(map, target.id, createConnection(block, 'source', '来自稳定关联'))
+    })
+
     extractBlockRelations(block.content).forEach((relation) => {
       const target = byId.get(relation.id)
       if (!target) return
 
       if (relation.kind === 'lens') {
-        pushUnique(map, block.id, createConnection(target, 'lens', '透镜'))
-        pushUnique(map, target.id, createConnection(block, 'lens', '被透镜引用'))
+        pushUnique(map, block.id, createConnection(target, 'lens', '引用节点'))
+        pushUnique(map, target.id, createConnection(block, 'lens', '被引用节点'))
         return
       }
 

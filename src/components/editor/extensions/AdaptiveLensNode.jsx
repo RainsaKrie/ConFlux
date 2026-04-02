@@ -13,11 +13,7 @@ export const AdaptiveLensNode = Node.create({
       blockId: { default: '' },
       title: { default: '' },
       content: { default: '' },
-      summary: { default: '' },
-      userIntent: { default: '' },
-      contextParagraph: { default: '' },
-      requestState: { default: 'draft' },
-      tone: { default: 'info' },
+      excerpt: { default: '' },
     }
   },
 

@@ -1,168 +1,193 @@
 ﻿# Flux 迭代日志
 
-本文件就是当前项目的版本日志，不再额外维护第二份独立的 release log。
+本文件是当前项目的版本真相与阶段真相。
 
-## 当前版本：v0.6 收口版
+## 1. 版本校正说明
 
-当前版本已经不再只是“可连续使用的前端 MVP”，而是完成了 `v0.6` 的核心收口：`Phantom Weaving` 已进入 `Entity Lexicon V2`，`Crystal Assimilation` 已具备差异预览、线性版本历史、任意版本恢复与来源追溯链，关键引用链路的文案与交互语言也已完成第一轮统一。
+本次修正的目标，不是补几段说明，而是把版本体系重新拉直。
 
-## 已完成
+- `v0.1 ~ v0.7` 可以继续视作相对线性的早期里程碑。
+- `v0.8`、`v0.9`、`v1.0` 在历史上并不是三次严格切开的独立发布；它们是对已经合入主链的能力做回顾性命名。
+- 当前代码已经同时包含 `v0.9` 的段落级本地推荐主链和 `v1.0` 的长文语义切块主链。
+- 与此同时，一部分原本应在 `v0.8` 完成的文案统一、术语收口和体验清理仍未彻底结束。
+- `package.json` 的 `0.0.0` 不是产品版本编号；产品版本只以本文件为准。
 
-- ✅ 建立 `SidebarLayout + /feed + /write + /graph` 三路由骨架。
-- ✅ 使用 Zustand persist 持久化 `fluxBlocks` 与 `savedPools`。
-- ✅ 将产品视觉从旧版暗黑面板切换到 `Zen Canvas` 浅色极简风格。
-- ✅ 在侧边栏加入 `Gravity Pools`，支持把筛选视角持久化。
-- ✅ 在侧边栏加入 `Command Deck` 入口和模型设置入口。
-- ✅ 完成 `flux_ai_config` 本地配置，支持兼容 OpenAI Chat Completions 的 BYOK 接口。
-- ✅ Feed 页接入 `Omni Filter`、`Quick Capture`、`Grid/List` 视图切换。
-- ✅ Quick Capture 提交后支持 AI 自动生成短标题与三维标签。
-- ✅ Feed List 视图升级为单行高密度布局，并修复长文本撑爆、标签裁切、Hover Card 遮挡等关键问题。
-- ✅ Editor 页支持自动创建文档、自动保存标题与正文。
-- ✅ Editor 标题区已拆出正文，支持标签删除、手动补充 `project` 标签、AI 重新审视标签。
-- ✅ TipTap 已接入 `@` 提及搜索，并插入自定义 `Adaptive Lens` 节点。
-- ✅ Adaptive Lens 已支持前端直连模型并流式生成透镜摘要。
-- ✅ Adaptive Lens 来源徽章已接通右侧 `Peek Drawer`，支持并列参考阅读和“全屏编辑此笔记”。
-- ✅ Peek Drawer 已恢复只读富文本渲染，并取消全屏遮罩，允许左右并屏写作。
-- ✅ `contentToPlainText()` 已增强，能够提取 `adaptive-lens-node` 的 `summary`，使透镜摘要重新参与 Feed 摘要、搜索与 AI 重打标签。
-- ✅ Editor 已接入 `Phantom Weaving` 原型：`Fuse.js + title-only` 本地嗅探、幽灵虚线 Decoration、Hover 轻卡与“提取摘要块”动作。
-- ✅ `Phantom Weaving` Hover 卡已接通 `逆向同化` 的最小闭环：读取当前段落与目标母体，调用模型融合内容，静默写回 block，并可立刻在右侧抽屉核对结果。
-- ✅ `Crystal Assimilation` 成功后会在当前正文附近浮出低压迫挂件，提示“已收录至相关母体”，并允许一键打开抽屉核对。
-- ✅ `Phantom Weaving` 已补齐 Anti-Overlinking 细节：短词过滤、停用词过滤、单母体单次命中、精确标题优先。
-- ✅ `Phantom Weaving` 已补齐稳定性修复：全文精确标题回看、点击虚线词兜底打开、Hover Card 改为 portal 浮层。
-- ✅ 幽灵 Hover Card 已完成高级抛光：玻璃感底板、命中徽章、两行 snippet、1:1 等分动作按钮、侧边抽屉入口。
-- ✅ `Adaptive Lens` 已完成“深度脱水”：废除厚重蓝色卡片，改为左引述线 + 正文内联脚注 + hover 才出现的重调按钮。
-- ✅ Feed 与 Graph 已切到共享关系语义层：`Adaptive Lens` 引用、显式引用和维度重叠现在走同一套关系推导。
-- ✅ Graph 已补齐右侧关系透视面板，能用和 Feed 一致的语言展示正文摘要、主关系与主要关联理由。
-- ✅ Graph 页已接入基于引用与维度重叠的关系图谱。
-- ✅ Graph 页已完成第一轮交互抛光：节点标签统一贴右侧、透明底、搜索浮层、语义缩放、搜索态聚光灯弱化、结果飞行与选中群系自动 framing。
-- ✅ `v0.5.1` 已将 `/graph` 的核心逻辑模块化拆分到 `src/features/graph/`，完成 `constants / utils / rendering / useGraphSearch / useGraphCamera` 的工程收口，且 `npm run build` 与 `npm run lint` 通过。
-- ✅ `Gravity Pool` 已升级为跨视图运行时上下文：`activePoolContext` 现已贯通 Feed、Write、Graph。
-- ✅ `Phantom Weaving` 已能读取当前 Pool 语境，并对候选母体做轻量加权。
-- ✅ `Crystal Assimilation` 已升级为“先预览、再确认、可回滚”的交互闭环，并记录最近 revision。
-- ✅ 同化与回滚事件已能以低压迫方式回流到当前 Feed / Graph 视角中的 Pool 事件流。
-- ✅ `v0.6 Phase 1` 已将 `Phantom Weaving` 从标题级 `Fuse.js` 匹配升级为 `Entity Lexicon Match`：`title / project / domain` 共同进入正则词典，Hover Card 也会显示 `命中标题 / 命中实体 / 命中领域`。
-- ✅ `Crystal Assimilation` 已补齐真正可核对的 Diff Visualization：预览弹层与 Drawer 现共用差异视图面板，而不再只是并排文本。
-- ✅ `recentAssimilationRevisions` 已收口为 `fluxBlocks[].revisions[]` 的线性版本历史，并带持久化迁移、长度上限与任意版本恢复。
-- ✅ `Crystal Assimilation` 的 revision 已补齐来源追溯：会记录 `sourceBlockId / sourceBlockTitle`，Drawer 可直接跳转回触发这次更新的来源笔记。
-- ✅ `Phantom Weaving` 已升级为 `Entity Lexicon V2`：词典来源不再只有 `title / project / domain`，还会吸收 `Adaptive Lens` 摘要与正文前 100 字短语。
-- ✅ Hover Card 的命中理由现已统一为 `命中标题 / 命中实体 / 命中摘要/正文`。
-- ✅ 关键引用链路已完成第一轮去魅化：`引用并生成摘要 / 更新至原始笔记 / 已同步更新 / 恢复此版本` 已替换早期偏概念化文案。
+因此，当前最准确的称呼是：`v1.0 稳定化阶段`。
 
-## 当前限制
+## 2. 当前代码基线
 
-- ☐ 仍然没有后端、同步、权限和协作能力。
-- ☐ `domain / format / project` 之外的维度已经进入数据模型，但 UI 仍未完整暴露。
-- ☐ Editor 手动新增标签目前仍以 `project` 维度为主，完整维度管理还未完成。
-- ☐ `Adaptive Lens` 仍然是最稳定的显式引用入口；`Phantom Weaving` 虽已扩展到摘要与正文短语，但还没有固定测试样本与误报回归机制。
-- ☐ 当前版本历史仍然是前端本地的线性数组，不支持分支、冲突合并或跨设备同步。
-- ☐ 引用语言在核心链路中已经统一，但站内仍可能存在零星旧文案未完全收口。
+当前主链已经稳定存在的能力包括：
 
-## 已完成里程碑回顾
+- Feed / Write / Graph 三视角骨架
+- 扁平 `fluxBlocks`、`savedPools` 与 Zustand persist
+- `Adaptive Lens` 显式引用节点与右侧 `Peek Drawer`
+- 段落级 `Phantom Weaving`：`2500ms debounce + Entity Lexicon + Fuse.js`
+- 用户确认后才真正触发的 `Crystal Assimilation`
+- 差异预览、线性 revision、恢复与来源追溯
+- `activePoolContext` 与 `recentPoolEvents` 跨视图连续体验
+- `Semantic Auto-Chunking & Threading`
+- Graph 的 `Semantic Zoom + Spotlight Search + Cluster Framing`
 
-### v0.1 目标：Zen Canvas MVP 骨架
+## 2.1 本轮稳定化收口
 
-- ✅ 建立 `SidebarLayout + /feed + /write + /graph` 三路由骨架。
-- ✅ 使用 Zustand persist 持久化 `fluxBlocks` 与 `savedPools`。
-- ✅ 将产品视觉统一到 `Zen Canvas` 浅色极简基线。
-- ✅ 接通 `Quick Capture`、基础标签系统、`Gravity Pools`、`Command Deck` 与 BYOK 设置入口。
+本轮已完成的收口包括：
 
-### v0.2 目标：沉浸写作与显式引用
+- 统一 `Sidebar`、`Command Deck`、`Peek Drawer`、`Graph` 面板中的中英混杂文案
+- 将关系语义中的“永久关联”收束为“稳定关联”
+- 清理 seed 数据中残留的旧“动态透镜 / 模型摘要”叙事
+- 同步修正部分 `API Key`、`Block Search`、`Untitled Note` 一类旧命名
+- 在 `/write` 中新增低存在感的 `stage / source` 手动管理入口：支持 `!阶段`、`^来源` 前缀录入，并在主标签区下方以灰度次级元数据条显示
+- 将 `stage / source` 继续接入 `/feed` 与 `/graph`：Feed 已可建议与筛选这两类维度，Graph 已可低存在感展示阶段与来源
+- 将前台 UI 文案继续去魅化：`发现相关节点`、`提取核心摘要`、`更新原文`
+- 修复带标题的超长段落在切块时仍可能超过安全阈值的问题
+- 新增 `npm run verify:phantom`，为长文切块与本地推荐补上极限噪音回归沙盒
+- 新增开源版 onboarding seed 数据，并在空仓首次启动时自动注入
+- 重写根目录 `README.md`，补齐 Manifesto、核心特性、运行指南与 BYOK 说明
+- 扩充 `.gitignore`，补上本地环境变量与常见编辑器缓存的忽略规则
 
-- ✅ Editor 支持自动创建文档、自动保存标题与正文。
-- ✅ TipTap 已接入 `@` 提及搜索，并插入自定义 `Adaptive Lens` 节点。
-- ✅ Adaptive Lens 已支持前端直连模型并流式生成透镜摘要。
-- ✅ 来源徽章已接通右侧 `Peek Drawer`，支持并列参考阅读与全屏切换。
-- ✅ `contentToPlainText()` 已增强，透镜摘要重新进入 Feed、搜索与 AI 重打标签链路。
+## 3. 回顾性里程碑
 
-### v0.3 目标：Phantom Weaving 原型
+### `v0.1` Zen Canvas MVP 骨架
 
-- ✅ 在 TipTap 中加入深度停顿后触发的本地静默嗅探。
-- ✅ 使用 `Fuse.js` 对 `fluxBlocks.title` 做轻量本地匹配。
-- ✅ 用极轻量的虚线 Decoration 标记潜在关联，避免打断写作流。
-- ✅ 加入 Anti-Overlinking 约束：短词过滤、停用词过滤、单母体单次命中、`1500ms + requestIdleCallback`、更淡的默认视觉。
-- ✅ Hover 轻卡已提供 `提取摘要块`、母体预览与 `逆向同化` 入口。
+已纳入当前代码基线：
 
-### v0.4 目标：Crystal Assimilation 闭环
+- 建立 `SidebarLayout + /feed + /write + /graph` 路由骨架
+- 使用 Zustand persist 持久化 `fluxBlocks` 与 `savedPools`
+- 视觉切到 `Zen Canvas` 浅色极简基线
+- 接通 `Quick Capture`、基础标签系统、`Gravity Pools`、`Command Deck` 与 BYOK 设置入口
 
-- ✅ 拦截当前新段落与目标母体全文，构造结构化“同化”提示词。
-- ✅ 调用模型生成融合后的母体正文，而不是简单追加在尾部。
-- ✅ 将融合结果用于改写目标母体，并在编辑器中形成低压迫反馈闭环。
-- ✅ 当前实现已进一步升级为差异预览、确认应用、版本历史、任意版本恢复与来源追溯。
+### `v0.2` 沉浸写作与显式引用
 
-### v0.5 目标：零压迫知识流
+已纳入当前代码基线：
 
-- ✅ 继续弱化“显式操作”心智负担，让主动预期覆盖标题级命中、Hover Card 与抽屉预览场景。
-- ✅ 将 `Adaptive Lens` 从笨重卡片改造成更接近正文的引述流，明显降低视觉噪音。
-- ✅ 打通 Feed、Editor、Graph 三视图对潜在关联的统一表达。
-- ✅ Graph 视图完成 `Semantic Zoom + Spotlight Search + Cluster Framing` 收官批次，具备大图检索与局部聚焦能力。
-- ✅ `Gravity Pool`、`Phantom Weaving`、`Crystal Assimilation` 已形成可用的连续体验主链。
-- ✅ `v0.5` 已正式完成。
+- Editor 自动创建文档、自动保存标题与正文
+- TipTap `@` 提及搜索
+- 自定义 `Adaptive Lens` 节点
+- 右侧 `Peek Drawer` 并屏参考阅读
+- `contentToPlainText()` 支撑引用节点降维
 
-### v0.5.1 目标：Graph 工程化收口
+### `v0.3` Phantom Weaving 原型
 
-- ✅ 把 `/graph` 从 God Object 形式的 `GraphPage.jsx` 拆分为独立特性目录。
-- ✅ 将 force / camera / node styling / pointer area / cluster framing 等 magic number 常量化。
-- ✅ 将 Spotlight Search 与 cluster camera 逻辑从页面中抽离成自定义 hooks。
-- ✅ 保持 Graph 现有视觉和交互不变，仅做 refactor without behavior change。
+已纳入当前代码基线，但旧交互形态已退役：
 
-### v0.6 Phase 1 目标：Entity Lexicon Match
+- 本地静默嗅探的原型起点
+- 早期虚线 Decoration、Hover Card 等形态已经下线
+- 保留下来的是“主动预期”能力，而不是早期侵入式交互
 
-- ✅ 将 `Phantom Weaving` 的召回底层从标题级 `Fuse.js` 替换为实体词典 + 全局正则扫描。
-- ✅ 词典来源已覆盖 `block.title`、`dimensions.project`、`dimensions.domain`。
-- ✅ 词条已加入长度过滤、停用词过滤、长度降序匹配与基础英文边界校验。
-- ✅ Hover Card 已能体现命中原因，不再默认把所有命中都解释成标题命中。
+### `v0.4` Crystal Assimilation 闭环
 
-### v0.6 Phase 2 目标：Diff / Version History / Origin Traceability
+已纳入当前代码基线：
 
-- ✅ `AssimilationDiffPanel` 已成为预览弹层与 Drawer 共用的差异视图基座。
-- ✅ 版本历史已从全局脆弱列表迁移为每个 Block 内嵌的 `revisions[]` 线性结构，默认保留最近 5 次。
-- ✅ Drawer 顶部已升级为 `Version History`，可选择任意历史版本并恢复到该版本。
-- ✅ revision 已记录来源笔记 ID 与标题，允许从历史记录直接跳回触发这次更新的源笔记。
+- 从当前写作上下文回流更新目标原始笔记
+- 模型生成融合结果，而不是简单 append
+- 结果进入预览确认流后再写回
 
-### v0.6 Phase 3 目标：Entity Lexicon V2 与引用语言统一
+### `v0.5` 零压迫知识流
 
-- ✅ `Phantom Weaving` 已将 `Adaptive Lens` 摘要和正文 snippet 纳入词典来源。
-- ✅ 词条现按“长度降序 + 权重优先”统一排序，优先级为 `title > entity > summary > snippet`。
-- ✅ Hover Card、来源脚注、成功挂件与 Version History 的核心文案已收敛到同一套更克制的引用语言。
+已纳入当前代码基线：
 
-## Graph 当前状态备忘
+- 弱化显式操作负担
+- `Adaptive Lens` 从重卡片收束为引用节点
+- Feed、Write、Graph 共享更一致的关系语义
 
-为了确保下一次会话只读 docs 就能直接继续，这里单独记录 `/graph` 当前可依赖的事实：
+### `v0.5.1` Graph 工程化收口
 
-- 节点标签固定绘制在节点右侧，不再根据象限切换位置。
-- 标签默认透明底，且只有在 `zoomed-in / hovered / search-matched` 时才显示。
-- 图谱左上角已有 `Spotlight Search` 浮层，使用 `Fuse.js` 对 block 标题做模糊匹配。
-- 搜索结果点击后不再只跳单点，而是进入选中态，再由群系 framing 统一处理镜头。
-- 选中节点后，会把“该节点 + 一阶关联节点”视作当前群系，并执行保守的居中缩放。
-- 当前 Graph 页面已经收口为组合层，核心逻辑已拆到 `src/features/graph/`。
-- 如果继续扩展 Graph，高优先级不再是“先拆文件”，而是考虑和 Gravity Pool 的筛选联动、群系表达与跨视图连续体验。
+已纳入当前代码基线：
 
-## 当前阶段结论
+- `/graph` 核心逻辑拆分到 `src/features/graph/`
+- 搜索、相机、渲染与常量完成模块化
+- 页面层回归组合职责
 
-这一阶段可以视为已经完成：
+### `v0.6` 质量控制、版本历史与来源追溯
 
-- ✅ `v0.6` 的核心产品闭环已打通：`Entity Lexicon V2 + Diff Visualization + Version History + Origin Traceability` 已全部进入实现态。
-- ✅ 引用链路的主要交互语言也已经完成第一轮统一，不再阻碍下一阶段继续扩展能力。
+已纳入当前代码基线：
 
-下一阶段更合理的重点应转向：
+- `Entity Lexicon Match`
+- Diff Visualization
+- `fluxBlocks[].revisions[]` 线性版本历史
+- 任意版本恢复
+- revision 来源追溯
+- 关系语义进一步收口
 
-- ☐ 为 `Phantom Weaving` 建立固定测试样本与误报/漏报评估机制。
-- ☐ 在 `/write` 中补齐更完整的 `domain / format / project` 手动元数据管理。
-- ☐ 视需要开始处理构建体积、回归验证与更长期的后端化边界。
+### `v0.7` 嗅探质量验证与维度管理补强
 
-### v0.7 建议：更聪明但依旧克制的嗅探
+已纳入当前代码基线：
 
-- ☐ 在标题命中稳定后，再谨慎扩展到标签、透镜摘要与局部正文短语。
-- ☐ 为 `Phantom Weaving` 建立一组固定测试样本，持续压制误报与漏报。
-- ☐ 继续保持“宁可漏报，也不要误报”的心流优先策略。
+- Phantom 词典进一步收缩到结构化来源：`title / project / domain`
+- 更严格的短词、停用词与中文误报抑制
+- `/write` 标签输入收束为前缀路由
+- 顶部标签输入框响应式伸缩
 
-### v0.8 建议：统一引用语言
+### `v0.8` 引用语言与体验收口
 
-- ☐ 统一 `Adaptive Lens`、Hover Card、Peek Drawer、Assimilation Badge 的视觉和文案语气。
-- ☐ 将“来源”“预览”“已收录”等动作收敛为同一套脚注式引用语言。
+这是“部分进入代码、但尚未彻底收口”的阶段，不应再把它写成已经干净完成的发布。
 
-## 继续开发前的推荐阅读顺序
+当前已落地的部分：
 
-1. `docs/06-HANDOFF.md`
-2. `docs/04-CHANGELOG.md`
-3. `docs/02-ARCHITECTURE.md`
+- 核心链路的部分文案已经去魅化
+- `Adaptive Lens`、Drawer、同化预览、版本历史的表达比早期更统一
+
+当前仍未彻底完成的部分：
+
+- 站内仍有零星旧文案、旧术语与动作命名残留
+- 文档与代码在一段时间内发生过明显漂移
+- 体验语气还没有彻底统一到同一套产品语言
+
+### `v0.9` 段落级本地推荐与人工确认漏斗
+
+这部分已经进入当前主链：
+
+- 下线整篇扫描与页面底部重型决策面板
+- 只监听当前自然段落
+- 使用 `2500ms debounce + Entity Lexicon + Fuse.js` 做本地高置信预筛
+- 命中后只浮出右下角轻提示
+- 点击后打开 Drawer，并在用户确认后才调模型
+- `dimensions.source` 承担稳定关联写入职责
+
+### `v1.0` 语义切块与线程串联
+
+这部分已经进入当前主链：
+
+- `Quick Capture` 超过阈值时进入本地切块
+- 优先按 Markdown 标题、双换行、句末符切分
+- 切块后共享 `threadId`
+- 通过 `project / source` 线程标签串联上下文
+- 批量调用 `addBlocks()` 渐进式落盘
+- 默认跳过逐块 AI 打标，避免并发洪峰
+- 已修复 UTF-8 编码损坏与危险的 chunk 去重逻辑
+
+## 4. 当前未完成事项
+
+以下问题依然成立：
+
+- 没有后端、同步、权限和协作能力
+- `stage / source` 已进入数据模型，并已在 `/write`、`/feed`、`/graph` 完成第一轮低存在感接入；但还没有独立批量管理、统计或自动化规则层
+- 同化动作仍是前端直连模型，没有缓存、队列和任务层
+- 当前版本历史仍然是本地线性数组，不支持分支与跨设备同步
+- docs 与代码虽然已经大体对齐，但后续每轮改动后仍要继续同步，避免再次漂移
+
+## 5. 当前阶段结论
+
+当前最合理的判断不是“继续往后跳版本”，而是先把 `v1.0` 收稳。
+
+当前阶段应优先做：
+
+1. 修正 docs 与代码现状的漂移，让所有文档重新指向同一个真实基线。
+2. 清理站内残留旧文案、乱码与历史交互术语。
+3. 为 `Phantom Weaving` 与长文切块补更多固定样本与回归验证。
+4. 处理小型技术债，降低后续继续演进的修改成本。
+
+## 6. 下一阶段建议
+
+如果没有更高优先级指令，下一阶段默认优先做这些事：
+
+1. 继续收口 `v0.8` 未完成的文案与交互统一工作。
+2. 补 `Phantom Weaving` 与 `Semantic Auto-Chunking` 的验证样本。
+3. 继续压低页面层耦合与遗留样例文件带来的维护成本。
+4. 继续减轻页面层和 store 层的小型技术债，降低后续演进成本。
+
+## 7. 继续开发前的推荐阅读顺序
+
+1. [`06-HANDOFF.md`](./06-HANDOFF.md)
+2. [`04-CHANGELOG.md`](./04-CHANGELOG.md)
+3. [`02-ARCHITECTURE.md`](./02-ARCHITECTURE.md)

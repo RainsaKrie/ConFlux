@@ -238,15 +238,3 @@ input.flux-title-input::placeholder {
   padding: 0;
   color: #27272a;
 }
-
-.phantom-weave-match {
-  border-bottom: 1px dashed rgba(161, 161, 170, 0.72);
-  cursor: text;
-  transition: all 0.2s ease;
-}
-
-.phantom-weave-match:hover {
-  border-bottom-color: #52525b;
-  background-color: rgba(244, 244, 245, 0.5);
-  cursor: help;
-}

@@ -1,6 +1,6 @@
-import { create } from 'zustand'
+﻿import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { fluxBlocks as seedBlocks } from '../data/fluxBlocks'
+import { seedFluxBlocks } from '../data/seedData'
 
 const MAX_BLOCK_REVISIONS = 5
 const MAX_POOL_EVENTS = 12
@@ -8,7 +8,7 @@ const MAX_POOL_EVENTS = 12
 const defaultSavedPools = [
   {
     id: 'default1',
-    name: '🚀 Flux冲刺',
+    name: 'Flux 冲刺',
     filters: {
       project: ['Flux'],
     },
@@ -65,7 +65,7 @@ function groupLegacyRevisions(revisions = []) {
 }
 
 function hydrateFluxBlocks(blocks, legacyRevisions = []) {
-  const sourceBlocks = Array.isArray(blocks) && blocks.length ? blocks : seedBlocks
+  const sourceBlocks = Array.isArray(blocks) && blocks.length ? blocks : seedFluxBlocks
   const legacyMap = groupLegacyRevisions(legacyRevisions)
 
   return sourceBlocks.map((block) => {
@@ -83,7 +83,7 @@ function hydrateFluxBlocks(blocks, legacyRevisions = []) {
 }
 
 function cloneSeedBlocks() {
-  return hydrateFluxBlocks(seedBlocks)
+  return hydrateFluxBlocks(seedFluxBlocks)
 }
 
 function updateBlockRevisions(block, nextRevision) {
@@ -114,6 +114,13 @@ export const useFluxStore = create(
       addBlock: (block) =>
         set((state) => ({
           fluxBlocks: [normalizeBlock({ ...block, revisions: block.revisions ?? [] }), ...state.fluxBlocks],
+        })),
+      addBlocks: (blocks) =>
+        set((state) => ({
+          fluxBlocks: [
+            ...blocks.map((block) => normalizeBlock({ ...block, revisions: block.revisions ?? [] })),
+            ...state.fluxBlocks,
+          ],
         })),
       addPool: (pool) =>
         set((state) => ({
@@ -281,7 +288,12 @@ export const useFluxStore = create(
       updateBlock: (blockId, updater) =>
         set((state) => ({
           fluxBlocks: state.fluxBlocks.map((block) =>
-            block.id === blockId ? { ...block, ...updater(block) } : block,
+            block.id === blockId
+              ? (() => {
+                  const nextPatch = updater(block)
+                  return nextPatch ? { ...block, ...nextPatch } : block
+                })()
+              : block,
           ),
         })),
       replaceBlock: (blockId, nextBlock) =>

@@ -1,5 +1,5 @@
-export function buildBlockId() {
-  return `block_${Date.now().toString().slice(-8)}`
+﻿export function buildBlockId() {
+  return `block_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`
 }
 
 function decodeHtmlEntities(value = '') {
@@ -27,12 +27,14 @@ function readAdaptiveLensAttribute(source = '', attributeName) {
 }
 
 function buildAdaptiveLensPlainText(source = '') {
+  const excerpt =
+    readAdaptiveLensAttribute(source, 'excerpt') || readAdaptiveLensAttribute(source, 'data-excerpt')
   const summary =
     readAdaptiveLensAttribute(source, 'summary') || readAdaptiveLensAttribute(source, 'data-summary')
   const title = readAdaptiveLensAttribute(source, 'title') || readAdaptiveLensAttribute(source, 'data-title')
   const content = readAdaptiveLensAttribute(source, 'content') || readAdaptiveLensAttribute(source, 'data-content')
 
-  return summary.trim() || title.trim() || content.trim()
+  return excerpt.trim() || summary.trim() || title.trim() || content.trim()
 }
 
 function readAdaptiveLensBlockId(source = '') {
@@ -76,10 +78,11 @@ export function contentToPlainText(content = '') {
     tempDiv.innerHTML = content
 
     tempDiv.querySelectorAll('adaptive-lens-node').forEach((node) => {
+      const excerpt = node.getAttribute('excerpt') || node.getAttribute('data-excerpt') || ''
       const summary = node.getAttribute('summary') || node.getAttribute('data-summary') || ''
       const title = node.getAttribute('title') || node.getAttribute('data-title') || ''
       const sourceContent = node.getAttribute('content') || node.getAttribute('data-content') || ''
-      const replacementText = summary.trim() || title.trim() || sourceContent.trim()
+      const replacementText = excerpt.trim() || summary.trim() || title.trim() || sourceContent.trim()
 
       node.replaceWith(document.createTextNode(replacementText ? ` ${replacementText} ` : ' '))
     })
@@ -150,7 +153,7 @@ export function extractBlockRelations(content = '') {
 
 export function buildBlockTitle(content) {
   const compact = contentToPlainText(content).replace(/\s+/g, ' ').trim()
-  if (!compact) return 'Untitled Flux Note'
+  if (!compact) return '未命名笔记'
   return compact.length > 30 ? `${compact.slice(0, 30)}...` : compact
 }
 
