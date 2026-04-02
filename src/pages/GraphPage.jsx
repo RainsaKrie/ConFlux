@@ -8,11 +8,14 @@ import { paintGraphNodePointerArea, renderGraphNode } from '../features/graph/re
 import { useGraphCamera } from '../features/graph/useGraphCamera'
 import { useGraphSearch } from '../features/graph/useGraphSearch'
 import { getGraphLinkNodeId, getNodeSpreadRadius, linkTouchesNode } from '../features/graph/utils'
+import { useTranslation } from '../i18n/I18nProvider'
 import { filtersMatchBlock } from '../features/pools/utils'
 import { useFluxStore } from '../store/useFluxStore'
 import { contentToPlainText } from '../utils/blocks'
+import { displayDimensionValue } from '../utils/displayTag'
 import {
   buildGraphData,
+  displayRelationLabel,
   getRelationSnapshot,
   relationToneStyles,
   secondaryRelationDimensions,
@@ -22,6 +25,7 @@ import {
 const MotionSection = motion.section
 
 export function GraphPage() {
+  const { language, t } = useTranslation()
   const navigate = useNavigate()
   const fluxBlocks = useFluxStore((state) => state.fluxBlocks)
   const activePoolContext = useFluxStore((state) => state.activePoolContext)
@@ -269,9 +273,9 @@ export function GraphPage() {
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex items-center justify-between border-b border-zinc-100 px-6 py-4">
           <div>
-            <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">星系图谱</div>
+            <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">{t('nav.graphLabel')}</div>
             <h1 className="mt-1 font-['Space_Grotesk',_'Noto_Sans_SC',_sans-serif] text-2xl font-semibold tracking-tight text-zinc-950">
-              知识物理关联图
+              {t('nav.graphDescription')}
             </h1>
             {activePoolContext ? (
               <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -294,7 +298,7 @@ export function GraphPage() {
             ) : null}
           </div>
           <div className="text-xs font-normal text-zinc-400">
-            {graphData.nodes.length} 个节点 / {graphData.links.length} 条关联线
+            {`${graphData.nodes.length} / ${graphData.links.length}`}
           </div>
         </div>
 
@@ -306,7 +310,7 @@ export function GraphPage() {
                 type="search"
                 value={searchQuery}
                 onChange={handleSearchChange}
-                placeholder="在图中定位知识块..."
+                placeholder={t('graph.searchPlaceholder')}
                 className="w-full bg-transparent text-sm text-zinc-700 outline-none placeholder:text-zinc-400"
               />
             </div>
@@ -322,11 +326,11 @@ export function GraphPage() {
                       className="flex w-full items-center justify-between gap-3 border-b border-zinc-100 px-3 py-2 text-left text-sm text-zinc-700 transition hover:bg-zinc-50 last:border-b-0"
                     >
                       <span className="truncate">{result.title}</span>
-                      <span className="shrink-0 text-[10px] uppercase tracking-[0.16em] text-zinc-400">定位</span>
+                      <span className="shrink-0 text-[10px] uppercase tracking-[0.16em] text-zinc-400">{t('graph.searchGo')}</span>
                     </button>
                   ))
                 ) : (
-                  <div className="px-3 py-2 text-sm text-zinc-400">未找到匹配知识块</div>
+                  <div className="px-3 py-2 text-sm text-zinc-400">{t('graph.noResults')}</div>
                 )}
               </div>
             ) : null}
@@ -366,7 +370,7 @@ export function GraphPage() {
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.24em] text-zinc-400">
                 <Sparkles className="h-3.5 w-3.5 text-indigo-400" />
-                {selectedNode ? '已锁定透视' : '关联透视'}
+                {selectedNode ? t('graph.pinned') : t('graph.focus')}
               </div>
               {selectedNode ? (
                 <button
@@ -375,7 +379,7 @@ export function GraphPage() {
                   className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
                 >
                   <X className="h-3.5 w-3.5" />
-                  关闭
+                  {t('common.close')}
                 </button>
               ) : null}
             </div>
@@ -383,7 +387,7 @@ export function GraphPage() {
             <div>
               <h2 className="text-lg font-semibold text-zinc-900">{activeBlock.title}</h2>
               <p className="mt-2 line-clamp-8 text-sm leading-6 text-zinc-500">
-                {preview || '这张知识块暂时还没有正文摘要。'}
+                {preview || t('graph.emptyPreview')}
               </p>
             </div>
 
@@ -395,7 +399,7 @@ export function GraphPage() {
                     relationToneStyles[tag.dimension]?.badge ?? relationToneStyles.neutral.badge
                   }`}
                 >
-                  {tag.value}
+                  {displayDimensionValue(tag.dimension, tag.value, language)}
                 </span>
               ))}
             </div>
@@ -409,20 +413,28 @@ export function GraphPage() {
                     className="inline-flex items-center gap-1 text-[10px] text-zinc-400/80"
                   >
                     <Hash size={8} strokeWidth={2} className="shrink-0" />
-                    <span>{tag.value}</span>
+                    <span>{displayDimensionValue(tag.dimension, tag.value, language)}</span>
                   </span>
                 ))}
               </div>
             ) : null}
 
             <div className={`rounded-2xl p-3 ${dominantTone.badge}`}>
-              <div className="text-[10px] uppercase tracking-[0.2em] opacity-70">当前主关系</div>
-              <div className="mt-1 text-sm font-medium">{relationSnapshot.dominant.label}</div>
-              <div className="mt-1 text-xs opacity-80">{relationSnapshot.totalConnections} 个直接关联节点</div>
+              <div className="text-[10px] uppercase tracking-[0.2em] opacity-70">
+                {t('graph.primaryRelation')}
+              </div>
+              <div className="mt-1 text-sm font-medium">
+                {displayRelationLabel(relationSnapshot.dominant.label, language)}
+              </div>
+              <div className="mt-1 text-xs opacity-80">
+                {t('graph.directLinks', { count: relationSnapshot.totalConnections })}
+              </div>
             </div>
 
             <div className="flex flex-col gap-2">
-              <div className="text-xs font-medium text-zinc-500">主要关联理由</div>
+              <div className="text-xs font-medium text-zinc-500">
+                {t('graph.topReasons')}
+              </div>
               {(graphData.relationMap.get(activeBlock.id) ?? [])
                 .slice()
                 .sort((left, right) => {
@@ -440,7 +452,7 @@ export function GraphPage() {
                       <div className="truncate text-sm font-medium text-zinc-800">{connection.title}</div>
                       <div className="mt-1 flex">
                         <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-medium ${tone.badge}`}>
-                          {connection.label}
+                          {displayRelationLabel(connection.label, language)}
                         </span>
                       </div>
                     </div>
@@ -448,21 +460,19 @@ export function GraphPage() {
                 })}
             </div>
 
-            <button
-              type="button"
-              onClick={() => navigate(`/write?id=${activeBlock.id}`)}
-              className="mt-auto inline-flex items-center justify-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-50"
-            >
-              <ArrowUpRight className="h-4 w-4" />
-              打开这张知识块
-            </button>
+              <button
+                type="button"
+                onClick={() => navigate(`/write?id=${activeBlock.id}`)}
+                className="mt-auto inline-flex items-center justify-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-medium text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-50"
+              >
+                <ArrowUpRight className="h-4 w-4" />
+                {t('graph.openNote')}
+              </button>
           </div>
         ) : (
           <div className="flex h-full flex-col items-start justify-center gap-3 text-zinc-400">
-            <div className="text-[11px] uppercase tracking-[0.24em]">关联透视</div>
-            <p className="text-sm leading-6">
-              把鼠标悬停在图中的某个节点上，这里会显示和知识流一致的关系语义、正文摘要与主要关联理由。点击节点后可以锁定右侧面板并滚动查看细节。
-            </p>
+            <div className="text-[11px] uppercase tracking-[0.24em]">{t('graph.focus')}</div>
+            <p className="text-sm leading-6">{t('graph.panelHint')}</p>
           </div>
         )}
       </aside>

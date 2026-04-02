@@ -73,6 +73,16 @@ export const relationPriority = {
   neutral: 0,
 }
 
+const relationLabelMap = {
+  '稳定关联': { zh: '稳定关联', en: 'Stable link' },
+  '来自稳定关联': { zh: '来自稳定关联', en: 'Linked from source' },
+  '引用节点': { zh: '引用节点', en: 'Reference node' },
+  '被引用节点': { zh: '被引用节点', en: 'Referenced by note' },
+  '引用': { zh: '引用', en: 'Reference' },
+  '被引用': { zh: '被引用', en: 'Referenced by' },
+  '独立条目': { zh: '独立条目', en: 'Standalone note' },
+}
+
 function createConnection(target, type, label) {
   return {
     id: target.id,
@@ -94,6 +104,12 @@ function pushUnique(map, sourceId, connection) {
   if (!exists) {
     bucket.push(connection)
   }
+}
+
+export function displayRelationLabel(label = '', language = 'zh') {
+  const entry = relationLabelMap[label]
+  if (!entry) return label
+  return entry[language === 'en' ? 'en' : 'zh'] ?? label
 }
 
 export function buildRelationMap(blocks) {
@@ -164,10 +180,18 @@ export function getRelationSnapshot(block, relationMap) {
   }
 }
 
-export function buildRelatedLabel(snapshot) {
-  if (snapshot.connectedTitles.length === 0) return '尚未形成明显连接'
-  if (snapshot.connectedTitles.length === 1) return `连到 ${snapshot.connectedTitles[0]}`
-  return `连到 ${snapshot.connectedTitles[0]} · ${snapshot.connectedTitles[1]}`
+export function buildRelatedLabel(snapshot, language = 'zh') {
+  if (snapshot.connectedTitles.length === 0) {
+    return language === 'en' ? 'No strong links yet' : '尚未形成明显连接'
+  }
+  if (snapshot.connectedTitles.length === 1) {
+    return language === 'en'
+      ? `Linked to ${snapshot.connectedTitles[0]}`
+      : `连到 ${snapshot.connectedTitles[0]}`
+  }
+  return language === 'en'
+    ? `Linked to ${snapshot.connectedTitles[0]} · ${snapshot.connectedTitles[1]}`
+    : `连到 ${snapshot.connectedTitles[0]} · ${snapshot.connectedTitles[1]}`
 }
 
 export function buildGraphData(blocks) {

@@ -14,6 +14,7 @@ import {
 import { useFluxStore } from '../store/useFluxStore'
 import { readAiConfig } from '../utils/aiConfig'
 import { classifyQuickCapture } from '../utils/ai'
+import { displayDimensionValue, matchesDimensionValue } from '../utils/displayTag'
 import {
   buildBlockId,
   contentToPlainText,
@@ -34,6 +35,7 @@ import {
   relationToneStyles,
   visibleRelationDimensions,
 } from '../utils/relations'
+import { useTranslation } from '../i18n/I18nProvider'
 
 const FEED_VIEW_STORAGE_KEY = 'flux_feed_view_mode'
 const dimensionStyles = {
@@ -56,17 +58,18 @@ function parseFiltersParam(raw) {
   }
 }
 
-function collectTagSuggestions(blocks) {
+function collectTagSuggestions(blocks, language = 'zh') {
   const counts = new Map()
 
   blocks.forEach((block) => {
     ;['domain', 'format', 'project', 'stage', 'source'].forEach((dimension) => {
       ;(block.dimensions[dimension] ?? []).forEach((value) => {
-        const key = `${dimension}:${value}`
+        const displayValue = displayDimensionValue(dimension, value, language)
+        const key = `${dimension}:${displayValue}`
         const current = counts.get(key)
         counts.set(key, {
           dimension,
-          value,
+          value: displayValue,
           count: (current?.count ?? 0) + 1,
         })
       })
@@ -79,10 +82,10 @@ function collectTagSuggestions(blocks) {
   })
 }
 
-function formatListDate(value) {
+function formatListDate(value, language = 'zh') {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
-  return new Intl.DateTimeFormat('en-US', {
+  return new Intl.DateTimeFormat(language === 'en' ? 'en-US' : 'zh-CN', {
     month: 'short',
     day: 'numeric',
   }).format(date)
@@ -103,7 +106,7 @@ function buildCaptureDimensions(filters = {}, overrides = {}) {
     format: filters.format ?? [],
     project: filters.project ?? [],
     stage: filters.stage ?? [],
-    source: ['Quick Capture'],
+    source: ['速记'],
     ...overrides,
   })
 
@@ -115,6 +118,7 @@ function buildCaptureDimensions(filters = {}, overrides = {}) {
 }
 
 export function FeedPage() {
+  const { language, t } = useTranslation()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [query, setQuery] = useState('')
@@ -159,14 +163,16 @@ export function FeedPage() {
     [],
   )
 
-  const tagSuggestions = useMemo(() => collectTagSuggestions(fluxBlocks), [fluxBlocks])
+  const tagSuggestions = useMemo(() => collectTagSuggestions(fluxBlocks, language), [fluxBlocks, language])
 
   const filteredBlocks = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase()
 
     return fluxBlocks.filter((block) => {
       const matchesTokens = activeTokens.every((token) =>
-        block.dimensions[token.dimension]?.includes(token.value),
+        (block.dimensions[token.dimension] ?? []).some((value) =>
+          matchesDimensionValue(token.dimension, value, token.value, language),
+        ),
       )
       if (!matchesTokens) return false
 
@@ -183,7 +189,7 @@ export function FeedPage() {
 
       return haystack.includes(normalizedQuery)
     })
-  }, [activeTokens, fluxBlocks, query])
+  }, [activeTokens, fluxBlocks, language, query])
 
   const activeFilters = useMemo(() => tokensToPoolFilters(activeTokens), [activeTokens])
 
@@ -250,11 +256,11 @@ export function FeedPage() {
       if (content.length > LONGFORM_CAPTURE_THRESHOLD) {
         const chunks = splitIntoSemanticChunks(content)
         const threadId = buildThreadId()
-        const threadProjectLabel = buildThreadProjectLabel(content, threadId)
-        const threadSourceLabel = buildThreadSourceLabel(threadId)
+        const threadProjectLabel = buildThreadProjectLabel(content, threadId, language)
+        const threadSourceLabel = buildThreadSourceLabel(threadId, language)
         const chunkBlocks = chunks.map((chunk, index) => ({
           id: buildBlockId(),
-          title: buildSemanticChunkTitle(chunk, index, chunks.length),
+          title: buildSemanticChunkTitle(chunk, index, chunks.length, language),
           content: chunk,
           dimensions: buildCaptureDimensions(activeFilters, {
             ...baseDimensions,
@@ -267,7 +273,12 @@ export function FeedPage() {
 
         addBlocks(chunkBlocks)
         resetCaptureComposer()
-        showCaptureWarning(`已拆分为 ${chunkBlocks.length} 个知识碎块，并通过 ${threadProjectLabel} 串联。`)
+        showCaptureWarning(
+          t('feed.chunkSaved', {
+            count: chunkBlocks.length,
+            thread: threadProjectLabel,
+          }),
+        )
         return
       }
 
@@ -287,7 +298,7 @@ export function FeedPage() {
 
       const aiConfig = readAiConfig()
       if (aiConfig.apiKey?.trim()) {
-        const aiTags = await classifyQuickCapture(content, aiConfig)
+        const aiTags = await classifyQuickCapture(content, aiConfig, language)
 
         updateBlock(blockId, (old) => ({
           title: aiTags.title && aiTags.title.length > 0 ? aiTags.title : old.title,
@@ -300,11 +311,11 @@ export function FeedPage() {
               ? mergeWithFallback(baseDimensions.format, aiTags.format, '碎片')
               : old.dimensions.format,
             project: mergeValues(baseDimensions.project, aiTags.project || []),
-            source: mergeValues(old.dimensions.source, ['AI AutoTag']),
+            source: mergeValues(old.dimensions.source, ['AI 生成']),
           },
         }))
       } else {
-        showCaptureWarning('离线保存成功。请配置 API 密钥后开启自动智能打标。')
+        showCaptureWarning(t('feed.offlineSaved'))
       }
     } finally {
       setIsSubmitting(false)
@@ -319,15 +330,19 @@ export function FeedPage() {
   }
 
   const handleDeleteBlock = (block) => {
-    const shouldDelete = window.confirm(`删除知识块「${block.title}」？`)
+    const shouldDelete = window.confirm(
+      t('feed.deleteConfirm', {
+        title: block.title,
+      }),
+    )
     if (!shouldDelete) return
     deleteBlock(block.id)
   }
 
   const activeLabel = useMemo(() => {
-    if (activeTokens.length === 0) return '知识流'
-    return activeTokens.map((token) => token.value).join(' / ')
-  }, [activeTokens])
+    if (activeTokens.length === 0) return t('feed.defaultFlow')
+    return activeTokens.map((token) => displayDimensionValue(token.dimension, token.value, language)).join(' / ')
+  }, [activeTokens, language, t])
 
   useEffect(() => {
     if (activeTokens.length === 0) {
@@ -343,7 +358,7 @@ export function FeedPage() {
           sourceView: 'feed',
         })
       : buildPoolContext({
-          name: `观察主题：${activeLabel}`,
+          name: activeLabel,
           filters: activeFilters,
           sourceView: 'feed',
         })
@@ -364,7 +379,7 @@ export function FeedPage() {
   const handleSavePool = () => {
     if (activeTokens.length === 0) return
 
-    const poolName = window.prompt('给这个引力池起个名字', activeLabel)
+    const poolName = window.prompt(t('feed.saveViewPrompt'), activeLabel)
     if (!poolName?.trim()) return
 
     addPool({
@@ -384,7 +399,7 @@ export function FeedPage() {
             ? 'bg-zinc-900 text-white'
             : 'text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700'
         }`}
-        aria-label="Grid view"
+        aria-label={t('feed.gridAria')}
       >
         <LayoutGrid size={16} />
       </button>
@@ -396,7 +411,7 @@ export function FeedPage() {
             ? 'bg-zinc-900 text-white'
             : 'text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700'
         }`}
-        aria-label="List view"
+        aria-label={t('feed.listAria')}
       >
         <List size={16} />
       </button>
@@ -425,7 +440,7 @@ export function FeedPage() {
                 <Orbit className="h-4 w-4" />
               </div>
               <div className="min-w-0">
-                <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-400">当前观察主题</div>
+                <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-400">{t('feed.currentView')}</div>
                 <div className="truncate text-sm font-medium text-zinc-900">{activePoolContext.name}</div>
               </div>
             </div>
@@ -458,7 +473,7 @@ export function FeedPage() {
             className="flex h-12 w-full cursor-text items-center gap-2 rounded-xl border border-zinc-200/50 bg-white/40 px-4 text-left text-sm text-zinc-400 transition-all hover:border-zinc-300 hover:bg-white hover:shadow-sm"
           >
             <Sparkles size={12} strokeWidth={2} />
-            <span>记录闪念... (点击或者按快捷键展开)</span>
+            <span>{t('feed.captureCollapsed')}</span>
           </button>
         ) : (
           <div className="rounded-2xl border border-zinc-200/80 bg-white p-4 shadow-md transition-all duration-300">
@@ -474,13 +489,13 @@ export function FeedPage() {
                   setIsExpanded(false)
                 }
               }}
-              placeholder="写下闪念... 或继续补充一段新的知识流"
+              placeholder={t('feed.capturePlaceholder')}
               className="min-h-[80px] max-h-32 w-full resize-none bg-transparent text-zinc-700 outline-none placeholder:text-zinc-400"
             />
 
             <div className="mt-3 flex items-center justify-between gap-4 text-xs text-zinc-400">
               <div className="flex min-w-0 items-center gap-3">
-                <span>{isSubmitting ? '正在处理输入并写入知识流...' : 'Enter 发送，Shift + Enter 换行'}</span>
+                <span>{isSubmitting ? t('feed.captureSubmitting') : t('feed.captureIdle')}</span>
                 <span className="inline-flex items-center gap-2 rounded-full bg-zinc-100 px-3 py-1.5 font-medium text-zinc-600">
                   {isSubmitting ? (
                     <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
@@ -500,7 +515,7 @@ export function FeedPage() {
                 className="shrink-0 rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={isSubmitting || !capture.trim()}
               >
-                写入知识流
+                {t('feed.submit')}
               </button>
             </div>
 
@@ -537,7 +552,8 @@ export function FeedPage() {
           <div className="relative overflow-visible rounded-[28px] border border-zinc-200/70 bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,1),_rgba(248,250,252,0.95))] shadow-[0_10px_40px_rgba(15,23,42,0.06)]">
             <div>
               {filteredBlocks.map((block, index) => {
-                const preview = contentToPlainText(block.content).replace(/\s+/g, ' ').trim() || '暂无摘要'
+                const preview =
+                  contentToPlainText(block.content).replace(/\s+/g, ' ').trim() || t('feed.emptyPreview')
                 const snapshot = getRelationSnapshot(block, relationMap)
                 const dominantType = relationToneStyles[snapshot.dominant.type] ? snapshot.dominant.type : 'neutral'
                 const tone = relationToneStyles[dominantType]
@@ -592,7 +608,7 @@ export function FeedPage() {
                           <div className="absolute right-0 top-full mt-2 w-72 bg-white/95 backdrop-blur-xl border border-zinc-200/80 rounded-xl p-3 shadow-[0_12px_40px_rgba(0,0,0,0.08)] opacity-0 group-hover/badge:opacity-100 pointer-events-none transition-all duration-200 z-50 flex flex-col gap-2">
                             <div className="flex items-center gap-1.5 text-[10px] text-zinc-400 font-medium uppercase tracking-widest mb-1 pb-2 border-b border-zinc-100">
                               <Link size={12} className="text-indigo-400" />
-                              关联网络 ({connections.length})
+                              {t('feed.listRelationNetwork')} ({connections.length})
                             </div>
                             <div className="flex flex-col gap-2.5">
                               {connections.slice(0, 5).map((c) => (
@@ -608,7 +624,7 @@ export function FeedPage() {
                             </div>
                             {connections.length > 5 ? (
                               <div className="mt-1 pt-2 border-t border-zinc-100 text-[10px] text-zinc-400 text-center">
-                                ...及其他 {connections.length - 5} 个节点关联
+                                {t('feed.listMoreConnections', { count: connections.length - 5 })}
                               </div>
                             ) : null}
                           </div>
@@ -620,18 +636,18 @@ export function FeedPage() {
                             key={`${block.id}-${tag.dimension}-${tag.value}`}
                             className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-medium ${dimensionStyles[tag.dimension]}`}
                           >
-                            {tag.value}
+                            {displayDimensionValue(tag.dimension, tag.value, language)}
                           </span>
                         ))}
                       </div>
                       {sourceMetadata.length ? (
                         <div className="flex items-center gap-1 text-[10px] text-zinc-400/80">
                           <Hash size={8} strokeWidth={2} />
-                          <span className="max-w-28 truncate">{sourceMetadata[0]}</span>
+                          <span className="max-w-28 truncate">{displayDimensionValue('source', sourceMetadata[0], language)}</span>
                         </div>
                       ) : null}
                       <span className="text-[11px] text-zinc-400 font-mono tracking-tight w-16 text-right shrink-0 group-hover:text-zinc-600 transition-colors">
-                        {formatListDate(block.updatedAt)}
+                        {formatListDate(block.updatedAt, language)}
                       </span>
                     </div>
                   </MotionDiv>
@@ -646,11 +662,11 @@ export function FeedPage() {
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-zinc-100 text-zinc-500">
               <Blocks className="h-5 w-5" />
             </div>
-            <p className="mt-4 text-lg font-medium text-zinc-900">这一区流暂时很安静</p>
+            <p className="mt-4 text-lg font-medium text-zinc-900">{t('feed.emptyTitle')}</p>
             <p className="mt-2 text-sm text-zinc-500">
               {activePoolContext
-                ? '可以调整当前观察主题，或者撤掉 Token 重新扩大视野。'
-                : '可以撤掉 Token，或者尝试更宽的搜索词。'}
+                ? t('feed.emptyWithView')
+                : t('feed.emptyWithoutView')}
             </p>
           </div>
         ) : null}

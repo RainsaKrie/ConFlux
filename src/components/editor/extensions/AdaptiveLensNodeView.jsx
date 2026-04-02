@@ -1,23 +1,25 @@
 ﻿import { NodeViewWrapper } from '@tiptap/react'
 import { Link } from 'lucide-react'
+import { useTranslation } from '../../../i18n/I18nProvider'
 import { useFluxStore } from '../../../store/useFluxStore'
 
-function buildPreviewText(excerpt = '', content = '') {
+function buildPreviewText(excerpt = '', content = '', fallback = '') {
   const raw = (excerpt || content || '').replace(/\s+/g, ' ').trim()
-  if (!raw) return '原始笔记暂时没有可展示的正文摘要。'
+  if (!raw) return fallback
   return raw.length > 50 ? `${raw.slice(0, 50)}...` : raw
 }
 
 export function AdaptiveLensNodeView({ node }) {
+  const { t } = useTranslation()
   const setPeekBlockId = useFluxStore((state) => state.setPeekBlockId)
   const { blockId, title, excerpt, content } = node.attrs
-  const previewText = buildPreviewText(excerpt, content)
+  const previewText = buildPreviewText(excerpt, content, t('lens.emptyPreview'))
 
   return (
     <NodeViewWrapper className="my-2" contentEditable={false}>
       <div className="flex flex-col gap-1 border-l-2 border-indigo-400 bg-indigo-50/30 py-1.5 pl-3 text-sm text-zinc-600">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-indigo-500/80">引用节点</div>
-        <div className="text-sm font-medium text-zinc-800">{title || '未命名笔记'}</div>
+        <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-indigo-500/80">{t('lens.title')}</div>
+        <div className="text-sm font-medium text-zinc-800">{title || t('common.untitledNote')}</div>
         <p className="text-sm leading-relaxed text-zinc-600">{previewText}</p>
         <button
           type="button"
@@ -34,7 +36,7 @@ export function AdaptiveLensNodeView({ node }) {
           className="mt-1 inline-flex w-fit items-center gap-1 text-xs font-medium text-indigo-600 transition-colors hover:text-indigo-700"
         >
           <Link size={12} strokeWidth={2} />
-          <span>查看原文</span>
+          <span>{t('lens.openSource')}</span>
         </button>
       </div>
     </NodeViewWrapper>

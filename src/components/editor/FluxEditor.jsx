@@ -23,14 +23,10 @@ import {
   Quote,
   Underline as UnderlineIcon,
 } from 'lucide-react'
+import { useTranslation } from '../../i18n/I18nProvider'
 import { useFluxStore } from '../../store/useFluxStore'
 import { contentToPlainText } from '../../utils/blocks'
 import { AdaptiveLensNode } from './extensions/AdaptiveLensNode'
-
-const copy = {
-  empty: '没有匹配的知识块',
-  mentionTitle: '引用搜索',
-}
 
 function escapeHtml(text) {
   return text
@@ -102,6 +98,7 @@ function ToolbarButton({ icon: Icon, label, isActive, action }) {
 }
 
 export function EditorToolbar({ editor }) {
+  const { t } = useTranslation()
   const [, setRenderTick] = useState(0)
 
   useEffect(() => {
@@ -146,25 +143,25 @@ export function EditorToolbar({ editor }) {
     ],
     [
       {
-        label: '加粗',
+        label: t('toolbar.bold'),
         icon: Bold,
         action: () => editor.chain().focus().toggleBold().run(),
         isActive: () => editor.isActive('bold'),
       },
       {
-        label: '斜体',
+        label: t('toolbar.italic'),
         icon: Italic,
         action: () => editor.chain().focus().toggleItalic().run(),
         isActive: () => editor.isActive('italic'),
       },
       {
-        label: '下划线',
+        label: t('toolbar.underline'),
         icon: UnderlineIcon,
         action: () => editor.chain().focus().toggleUnderline().run(),
         isActive: () => editor.isActive('underline'),
       },
       {
-        label: '高亮',
+        label: t('toolbar.highlight'),
         icon: Highlighter,
         action: () => editor.chain().focus().toggleHighlight().run(),
         isActive: () => editor.isActive('highlight'),
@@ -172,19 +169,19 @@ export function EditorToolbar({ editor }) {
     ],
     [
       {
-        label: '无序列表',
+        label: t('toolbar.bulletList'),
         icon: List,
         action: () => editor.chain().focus().toggleBulletList().run(),
         isActive: () => editor.isActive('bulletList'),
       },
       {
-        label: '有序列表',
+        label: t('toolbar.orderedList'),
         icon: ListOrdered,
         action: () => editor.chain().focus().toggleOrderedList().run(),
         isActive: () => editor.isActive('orderedList'),
       },
       {
-        label: '任务列表',
+        label: t('toolbar.taskList'),
         icon: ListTodo,
         action: () => editor.chain().focus().toggleTaskList().run(),
         isActive: () => editor.isActive('taskList'),
@@ -192,13 +189,13 @@ export function EditorToolbar({ editor }) {
     ],
     [
       {
-        label: '代码块',
+        label: t('toolbar.codeBlock'),
         icon: Code2,
         action: () => editor.chain().focus().toggleCodeBlock().run(),
         isActive: () => editor.isActive('codeBlock'),
       },
       {
-        label: '引用块',
+        label: t('toolbar.blockquote'),
         icon: Quote,
         action: () => editor.chain().focus().toggleBlockquote().run(),
         isActive: () => editor.isActive('blockquote'),
@@ -228,7 +225,7 @@ export function EditorToolbar({ editor }) {
   )
 }
 
-function MentionList({ items, command, selectedIndex }) {
+function MentionList({ items, command, selectedIndex, copy }) {
   if (items.length === 0) {
     return (
       <div className="w-80 rounded-3xl border border-zinc-200 bg-white p-3 shadow-[0_24px_60px_rgba(15,23,42,0.12)]">
@@ -274,7 +271,7 @@ function MentionList({ items, command, selectedIndex }) {
   )
 }
 
-function createMentionSuggestion(blocks) {
+function createMentionSuggestion(blocks, copy) {
   let selectedIndex = 0
 
   return {
@@ -300,6 +297,7 @@ function createMentionSuggestion(blocks) {
       const updateProps = (props) => {
         component.updateProps({
           ...props,
+          copy,
           selectedIndex,
           command: (item) => props.command(item),
         })
@@ -311,6 +309,7 @@ function createMentionSuggestion(blocks) {
           component = new ReactRenderer(MentionList, {
             props: {
               ...props,
+              copy,
               selectedIndex,
               command: (item) => props.command(item),
             },
@@ -378,8 +377,16 @@ function createMentionSuggestion(blocks) {
 }
 
 export function FluxEditor({ initialContent = '', onChange, onEditorReady }) {
+  const { t } = useTranslation()
   const fluxBlocks = useFluxStore((state) => state.fluxBlocks)
-  const mentionSuggestion = useMemo(() => createMentionSuggestion(fluxBlocks), [fluxBlocks])
+  const copy = useMemo(
+    () => ({
+      empty: t('toolbar.mentionEmpty'),
+      mentionTitle: t('toolbar.mentionTitle'),
+    }),
+    [t],
+  )
+  const mentionSuggestion = useMemo(() => createMentionSuggestion(fluxBlocks, copy), [copy, fluxBlocks])
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -392,7 +399,7 @@ export function FluxEditor({ initialContent = '', onChange, onEditorReady }) {
       Highlight.configure({ multicolor: false }),
       Underline,
       Placeholder.configure({
-        placeholder: '写下这条笔记的正文，输入 @ 可以引用其他知识块。',
+        placeholder: t('toolbar.placeholder'),
       }),
       AdaptiveLensNode,
       Mention.configure({

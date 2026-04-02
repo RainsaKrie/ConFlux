@@ -151,9 +151,9 @@ export function extractBlockRelations(content = '') {
   return relations
 }
 
-export function buildBlockTitle(content) {
+export function buildBlockTitle(content, language = 'zh') {
   const compact = contentToPlainText(content).replace(/\s+/g, ' ').trim()
-  if (!compact) return '未命名笔记'
+  if (!compact) return language === 'en' ? 'Untitled' : '未命名笔记'
   return compact.length > 30 ? `${compact.slice(0, 30)}...` : compact
 }
 

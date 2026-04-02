@@ -2,31 +2,33 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { Binary, Bot, CircleDot, Command, Compass, Settings, X } from 'lucide-react'
 import { NavLink, Outlet, useNavigate, useSearchParams } from 'react-router-dom'
+import { MetadataOverviewPanel } from '../components/sidebar/MetadataOverviewPanel'
+import { RecentAiTasksPanel } from '../components/sidebar/RecentAiTasksPanel'
 import { buildPoolContext, buildPoolContextKey, encodePoolFilters, poolFiltersToTokens } from '../features/pools/utils'
+import { useTranslation } from '../i18n/I18nProvider'
 import { useFluxStore } from '../store/useFluxStore'
 import { DEFAULT_AI_CONFIG, readAiConfig, saveAiConfig } from '../utils/aiConfig'
+import { displayDimensionValue } from '../utils/displayTag'
 
 const MotionDiv = motion.div
 const LazyCommandDeck = lazy(() =>
   import('../components/command/CommandDeck').then((module) => ({ default: module.CommandDeck })),
 )
 
-const navItems = [
-  { to: '/feed', label: '知识流', description: '动态流', icon: Compass },
-  { to: '/write', label: '写作场', description: '沉浸创作', icon: Bot },
-  { to: '/graph', label: '关系图', description: '星图', icon: Binary },
-]
-
 export function SidebarLayout() {
+  const { language, setLanguage, t } = useTranslation()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [isCommandOpen, setIsCommandOpen] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [config, setConfig] = useState(() => readAiConfig() ?? DEFAULT_AI_CONFIG)
+  const fluxBlocks = useFluxStore((state) => state.fluxBlocks)
   const savedPools = useFluxStore((state) => state.savedPools)
   const removePool = useFluxStore((state) => state.removePool)
   const activePoolContext = useFluxStore((state) => state.activePoolContext)
   const clearActivePoolContext = useFluxStore((state) => state.clearActivePoolContext)
+  const recentAiTasks = useFluxStore((state) => state.recentAiTasks)
+  const removeDimensionValueFromAllBlocks = useFluxStore((state) => state.removeDimensionValueFromAllBlocks)
   const setActivePoolContext = useFluxStore((state) => state.setActivePoolContext)
   const activeFiltersToken = searchParams.get('filters')
 
@@ -39,6 +41,14 @@ export function SidebarLayout() {
   )
 
   const hasApiKey = Boolean(config.apiKey?.trim())
+  const navItems = useMemo(
+    () => [
+      { to: '/feed', label: t('nav.feedLabel'), description: t('nav.feedDescription'), icon: Compass },
+      { to: '/write', label: t('nav.writeLabel'), description: t('nav.writeDescription'), icon: Bot },
+      { to: '/graph', label: t('nav.graphLabel'), description: t('nav.graphDescription'), icon: Binary },
+    ],
+    [t],
+  )
 
   useEffect(() => {
     const handleStorage = (event) => {
@@ -62,6 +72,28 @@ export function SidebarLayout() {
     })
   }
 
+  const handleOpenMetadataFilter = (dimension, value) => {
+    const filters = { [dimension]: [value] }
+    setActivePoolContext(
+      buildPoolContext({
+        name: `${t(`editor.tagDimension.${dimension}`)}：${displayDimensionValue(dimension, value, language)}`,
+        filters,
+        sourceView: 'sidebar',
+      }),
+    )
+    navigate(`/feed?filters=${encodePoolFilters([{ dimension, value }])}`)
+  }
+
+  const handleRemoveMetadataValue = (dimension, value) => {
+    const label = t(`editor.tagDimension.${dimension}`)
+    const confirmed = window.confirm(
+      `${t('common.remove')}${label}「${displayDimensionValue(dimension, value, language)}」？`,
+    )
+    if (!confirmed) return
+
+    removeDimensionValueFromAllBlocks(dimension, value)
+  }
+
   return (
     <>
       <div className="min-h-screen bg-[#F9F9FB] text-zinc-900">
@@ -74,14 +106,14 @@ export function SidebarLayout() {
                 </div>
                 <div>
                   <div className="font-['Space_Grotesk',_'Noto_Sans_SC',_sans-serif] text-lg font-semibold tracking-tight text-zinc-950">
-                    Flux
+                    Conflux
                   </div>
-                  <div className="text-xs text-zinc-400">主动生长的知识流</div>
+                  <div className="text-xs text-zinc-400">{t('nav.brandTagline')}</div>
                 </div>
               </div>
 
               <div className="mt-8">
-                <div className="mb-3 text-[11px] uppercase tracking-[0.24em] text-zinc-400">导航</div>
+                <div className="mb-3 text-[11px] uppercase tracking-[0.24em] text-zinc-400">{t('nav.navigation')}</div>
                 <nav className="space-y-1.5">
                   {navItems.map((item) => {
                     const Icon = item.icon
@@ -111,7 +143,7 @@ export function SidebarLayout() {
               </div>
 
               <div className="mt-8">
-                <div className="mb-3 text-[11px] uppercase tracking-[0.24em] text-zinc-400">观察主题</div>
+                <div className="mb-3 text-[11px] uppercase tracking-[0.24em] text-zinc-400">{t('nav.smartViews')}</div>
                 <div className="space-y-1.5">
                   {savedPools.map((pool) => {
                     const isActive = activePoolId === pool.id
@@ -142,7 +174,9 @@ export function SidebarLayout() {
                             className="min-w-0 flex-1 text-left"
                           >
                             <div className="text-sm font-medium">{pool.name}</div>
-                            <div className="mt-1 text-xs text-zinc-400">{tokens.map((token) => token.value).join(' / ')}</div>
+                            <div className="mt-1 text-xs text-zinc-400">
+                              {tokens.map((token) => displayDimensionValue(token.dimension, token.value, language)).join(' / ')}
+                            </div>
                           </button>
                           <button
                             type="button"
@@ -154,7 +188,7 @@ export function SidebarLayout() {
                               removePool(pool.id)
                             }}
                             className="mt-0.5 rounded-full p-1 text-zinc-300 opacity-0 transition hover:bg-zinc-200 hover:text-zinc-600 group-hover:opacity-100"
-                            aria-label={`移除观察主题 ${pool.name}`}
+                            aria-label={t('nav.removeSmartView', { name: pool.name })}
                           >
                             <X className="h-3.5 w-3.5" />
                           </button>
@@ -165,9 +199,20 @@ export function SidebarLayout() {
                 </div>
               </div>
 
+              <MetadataOverviewPanel
+                blocks={fluxBlocks}
+                onOpenFilter={handleOpenMetadataFilter}
+                onRemoveValue={handleRemoveMetadataValue}
+              />
+
+              <RecentAiTasksPanel
+                tasks={recentAiTasks}
+                onOpenBlock={(blockId) => navigate(`/write?id=${blockId}`)}
+              />
+
               <div className="mt-auto rounded-3xl border border-zinc-200 bg-white p-4 shadow-sm">
-                <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">指令台</div>
-                <div className="mt-2 text-sm leading-6 text-zinc-500">Cmd/Ctrl + K 打开全局指令台</div>
+                <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">{t('nav.globalSearch')}</div>
+                <div className="mt-2 text-sm leading-6 text-zinc-500">{t('nav.globalSearchHint')}</div>
                 <button
                   type="button"
                   onClick={() => setIsCommandOpen(true)}
@@ -184,7 +229,16 @@ export function SidebarLayout() {
                 className="mt-3 inline-flex items-center gap-2 self-start rounded-full px-2 py-1.5 text-[11px] font-medium text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
               >
                 <Settings className="h-3.5 w-3.5" />
-                <span>配置大模型引擎</span>
+                <span>{t('nav.aiSettings')}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setLanguage(language === 'zh' ? 'en' : 'zh')}
+                className="mt-2 inline-flex items-center gap-2 self-start rounded-full px-2 py-1.5 text-[11px] font-medium text-zinc-400 transition hover:bg-zinc-100 hover:text-zinc-700"
+              >
+                <Command className="h-3.5 w-3.5" />
+                <span>{t('common.languageToggle')}</span>
               </button>
             </div>
           </aside>
@@ -193,13 +247,13 @@ export function SidebarLayout() {
             {!hasApiKey ? (
               <div className="sticky top-0 z-50 -mx-6 -mt-6 mb-6 border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 lg:-mx-8">
                 <div className="flex items-center justify-between gap-4">
-                  <span>欢迎进入 Flux。系统检测到尚未配置大模型引擎，自动打标与原文更新能力暂时不可用。</span>
+                  <span>{t('settings.missingApiBanner')}</span>
                   <button
                     type="button"
                     onClick={() => setIsSettingsOpen(true)}
                     className="shrink-0 rounded-full bg-amber-100 px-3 py-1.5 text-xs font-medium text-amber-900 transition hover:bg-amber-200"
                   >
-                    立即配置 API →
+                    {t('settings.openButton')}
                   </button>
                 </div>
               </div>
@@ -233,8 +287,8 @@ export function SidebarLayout() {
             >
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h3 className="text-base font-semibold text-zinc-900">大模型引擎</h3>
-                  <p className="mt-1 text-sm leading-6 text-zinc-500">配置兼容 OpenAI Chat Completions 的接口。</p>
+                  <h3 className="text-base font-semibold text-zinc-900">{t('settings.title')}</h3>
+                  <p className="mt-1 text-sm leading-6 text-zinc-500">{t('settings.description')}</p>
                 </div>
                 <button
                   type="button"
@@ -247,7 +301,7 @@ export function SidebarLayout() {
 
               <div className="mt-6 space-y-4">
                 <label className="block">
-                  <span className="mb-1.5 block text-xs font-medium uppercase tracking-[0.18em] text-zinc-400">接口地址</span>
+                  <span className="mb-1.5 block text-xs font-medium uppercase tracking-[0.18em] text-zinc-400">{t('settings.baseUrl')}</span>
                   <input
                     type="text"
                     placeholder="https://api.deepseek.com/v1"
@@ -258,7 +312,7 @@ export function SidebarLayout() {
                 </label>
 
                 <label className="block">
-                  <span className="mb-1.5 block text-xs font-medium uppercase tracking-[0.18em] text-zinc-400">模型名称</span>
+                  <span className="mb-1.5 block text-xs font-medium uppercase tracking-[0.18em] text-zinc-400">{t('settings.model')}</span>
                   <input
                     type="text"
                     placeholder="deepseek-chat"
@@ -269,7 +323,7 @@ export function SidebarLayout() {
                 </label>
 
                 <label className="block">
-                  <span className="mb-1.5 block text-xs font-medium uppercase tracking-[0.18em] text-zinc-400">API 密钥</span>
+                  <span className="mb-1.5 block text-xs font-medium uppercase tracking-[0.18em] text-zinc-400">{t('settings.apiKey')}</span>
                   <input
                     type="password"
                     placeholder="sk-..."
@@ -288,7 +342,7 @@ export function SidebarLayout() {
                 }}
                 className="mt-6 inline-flex w-full items-center justify-center rounded-xl bg-zinc-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-zinc-800"
               >
-                保存并关闭
+                {t('settings.saveAndClose')}
               </button>
             </MotionDiv>
           </MotionDiv>

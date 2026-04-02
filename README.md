@@ -1,29 +1,32 @@
-# 🌊 Flux - Agentic Knowledge Flow
+﻿# 🌊 Conflux
 
-Flux is a local-first knowledge tool for people who think faster than folders can keep up.
+An Experimental Agentic Knowledge Flow System (基于本地优先的聚合知识流转实验)
 
-## The Manifesto
+## Philosophy
 
-Folders force you to decide too early.
+Conflux is built on a simple working hypothesis: knowledge is often easier to navigate as a network than as a rigid tree.
 
-They ask you to classify a thought before you have finished thinking it, then bury it behind a path you probably will not remember next week. Flux takes the opposite stance: every note is a flat knowledge block, organized by dimensions, references, and runtime relationships instead of rigid containers.
+Instead of folders and nested ownership, the system keeps notes in a flat local data model and lets structure emerge through dimensions, references, and runtime relationships. Large language models are used in a constrained way: they assist with local context generation, selective retagging, and revision-based write-back, but only after local prefiltering and explicit user confirmation.
 
-That is the core idea behind Agentic Knowledge Flow:
+## Tech Stack
 
-- capture first, structure later
-- connect notes through tags, references, and local recommendation
-- split longform input into usable fragments before it turns into sludge
-- keep the model on a short leash: local prefilter first, explicit confirmation before write-back
+- React 19
+- Vite 8
+- Tailwind CSS 4
+- Zustand
+- TipTap
+- ForceGraph2D
 
-## Core Features
+## Key Features
 
-- Zen Canvas: low-pressure writing surface with a deliberately quiet interface
-- Omni Filter: multi-dimensional filtering across domain, format, project, stage, and source
-- Phantom Weaving: paragraph-level local recommendation powered by lexicon matching and Fuse.js
-- Crystal Assimilation: preview-first note update flow with visible diffs and revision history
-- Graph View: relation map for references, overlaps, and emergent clusters
-- Semantic Auto-Chunking: longform capture pipeline with shared thread labels
-- Local-First + BYOK: notes stay in localStorage, model calls go directly to your configured endpoint
+- Bento and List dual views for low-friction capture and review
+- Flat `fluxBlocks` store with multi-dimensional metadata (`domain / format / project / stage / source`)
+- Paragraph-level local entity sniffing powered by `Entity Lexicon + Fuse.js`
+- Adaptive Lens reference nodes with context-aware right-side inspection
+- Assimilation write-back flow with diff preview, revision history, and rollback
+- Longform semantic chunking with shared thread labels for oversized input
+- Graph view with semantic zoom, search spotlight, and relation framing
+- Pure front-end BYOK model configuration with no required backend relay
 
 ## Getting Started
 
@@ -32,31 +35,30 @@ npm install
 npm run dev
 ```
 
-Then open the app in your browser and configure BYOK in the lower-left settings area.
+Then open the application in the browser.
 
-Flux expects a standard Chat Completions compatible endpoint. OpenAI, DeepSeek, SiliconFlow, and similar providers can all work as long as you provide:
+This project follows a pure front-end BYOK (Bring Your Own Key) architecture:
 
-- `Base URL`
-- `Model`
-- `API Key`
+- all note data is stored in browser `localStorage`
+- the system ships with no default backend
+- users must configure an OpenAI-compatible Chat Completions endpoint from the lower-left AI settings entry in the UI
+- providers such as DeepSeek and other compatible gateways can be used as long as they support the standard request shape
 
-No server relay is required. Your notes remain local, and your API key is stored only in the browser.
-
-## Development
+## Development Checks
 
 ```bash
 npm run lint
 npm run build
 ```
 
-For regression coverage around local recommendation and longform chunking:
+Regression verification for local recommendation and longform chunking:
 
 ```bash
 npm run verify:phantom
 ```
 
-## Project Status
+## Status
 
-Current release line: `v1.0 stabilization`.
+Current project line: `v1.0 stabilization`.
 
-Flux already includes the full front-end writing loop, paragraph recommendation, diff-based note updates, longform semantic chunking, and graph projection. The next step is not adding more spectacle. It is making the current system cleaner, sharper, and more trustworthy.
+The architecture is intentionally locked to a local-first React baseline for this phase. The focus is not adding speculative features, but making the current writing, recommendation, revision, and graph pipeline reliable enough for open-source distribution.

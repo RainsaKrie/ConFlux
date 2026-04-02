@@ -1,18 +1,16 @@
-﻿# Flux 迭代日志
+﻿# Conflux 迭代日志
 
-本文件是当前项目的版本真相与阶段真相。
+本文件是当前项目的版本真相，也是 Roadmap 的唯一分发表。
+
+当前发布印戳：`v1.0.0 Release Candidate`
 
 ## 1. 版本校正说明
-
-本次修正的目标，不是补几段说明，而是把版本体系重新拉直。
 
 - `v0.1 ~ v0.7` 可以继续视作相对线性的早期里程碑。
 - `v0.8`、`v0.9`、`v1.0` 在历史上并不是三次严格切开的独立发布；它们是对已经合入主链的能力做回顾性命名。
 - 当前代码已经同时包含 `v0.9` 的段落级本地推荐主链和 `v1.0` 的长文语义切块主链。
-- 与此同时，一部分原本应在 `v0.8` 完成的文案统一、术语收口和体验清理仍未彻底结束。
+- 因此，当前最准确的称呼仍然是：`v1.0 稳定化阶段`。
 - `package.json` 的 `0.0.0` 不是产品版本编号；产品版本只以本文件为准。
-
-因此，当前最准确的称呼是：`v1.0 稳定化阶段`。
 
 ## 2. 当前代码基线
 
@@ -24,9 +22,11 @@
 - 段落级 `Phantom Weaving`：`2500ms debounce + Entity Lexicon + Fuse.js`
 - 用户确认后才真正触发的 `Crystal Assimilation`
 - 差异预览、线性 revision、恢复与来源追溯
-- `activePoolContext` 与 `recentPoolEvents` 跨视图连续体验
+- `activePoolContext`、`recentPoolEvents` 与 `recentAiTasks` 跨视图连续体验
 - `Semantic Auto-Chunking & Threading`
 - Graph 的 `Semantic Zoom + Spotlight Search + Cluster Framing`
+- 首启 onboarding seed 与开源版 README 门面
+- 前端双语界面基建：`zh / en` 本地持久化切换与 AI Prompt 联动
 
 ## 2.1 本轮稳定化收口
 
@@ -37,13 +37,31 @@
 - 清理 seed 数据中残留的旧“动态透镜 / 模型摘要”叙事
 - 同步修正部分 `API Key`、`Block Search`、`Untitled Note` 一类旧命名
 - 在 `/write` 中新增低存在感的 `stage / source` 手动管理入口：支持 `!阶段`、`^来源` 前缀录入，并在主标签区下方以灰度次级元数据条显示
-- 将 `stage / source` 继续接入 `/feed` 与 `/graph`：Feed 已可建议与筛选这两类维度，Graph 已可低存在感展示阶段与来源
+- 将 `stage / source` 继续接入 `/feed`、`/graph` 与侧边栏：支持建议、筛选、概览与轻量全局移除
 - 将前台 UI 文案继续去魅化：`发现相关节点`、`提取核心摘要`、`更新原文`
 - 修复带标题的超长段落在切块时仍可能超过安全阈值的问题
-- 新增 `npm run verify:phantom`，为长文切块与本地推荐补上极限噪音回归沙盒
-- 新增开源版 onboarding seed 数据，并在空仓首次启动时自动注入
+- 新增 `npm run verify:phantom`，并补上中英混合命中边界、超长垃圾段落防溢出与线程标签断言
+- 将 `EditorPage` 中的右侧 `Peek Drawer` 与原文更新预览弹层抽离为独立组件，压低页面层耦合
+- 清理未使用的 `AssimilationDiffPanel.jsx` 与历史样例 `fluxBlocks.js`，减少仓库内僵尸文件
+- 修正 `RevisionDiffPanel`、回归样本与脚本中的 UTF-8 乱码文案，收口维护噪音
+- 为 AI 重打标签与原文更新补上本地 `recentAiTasks` 记录层，能够显示运行中、成功、失败三种状态
+- 新增开源版 onboarding seed 数据，并在首次冷启动且本地缺失持久化工作区时自动注入
 - 重写根目录 `README.md`，补齐 Manifesto、核心特性、运行指南与 BYOK 说明
 - 扩充 `.gitignore`，补上本地环境变量与常见编辑器缓存的忽略规则
+- 建立轻量级前端 i18n 层：基于 `src/i18n/` 词典、`localStorage.flux_language` 与浏览器语言推断，支持 `EN / 中` 无刷新切换
+- 将 `Sidebar`、`Feed`、`Write`、`Graph`、`Command Deck`、`Peek Drawer`、`Revision Diff`、`Settings` 等核心界面接入双语文案
+- 让 AI 打标与原文更新 Prompt 跟随当前界面语言切换，英文界面默认请求英文输出，中文界面请求简体中文输出
+- 为 `未分类 / 碎片 / 速记 / AI 生成` 等系统默认标签补上语言感知的显示映射，避免英文界面继续暴露中文底层值
+- 为 Graph 中的关系原因与元数据显示补上双语映射，减少 `稳定关联 / 引用节点` 一类内部标签直接外露
+- 让首启 onboarding seed 与默认 `savedPools` 名称跟随当前语言生成，避免英文用户第一次进入时仍看到整套中文示例内容
+- 将 Graph 右侧说明、主关系标题、定位按钮等剩余提示词正式收进 i18n 词典，减少页面内临时三元分支
+- 让 `未命名笔记`、长文 thread 标签、`来源:` / `知识碎块:` 等自动生成元数据随当前语言输出，并在显示层继续支持中英互译
+- 将 onboarding seed 收束为“仅在首次冷启动且本地缺失 `fluxBlocks` 持久化结构时按当前界面语言分发”的安全模型：英文环境挂载英文引导，中文环境挂载中文引导；一旦落盘即视为普通用户数据，后续切换语言不再触发任何批量重算
+- 修正 Zustand 持久化中的冷启动判定：onboarding seed 与默认 `savedPools` 现在只会在本地缺失对应持久化结构时注入，不再把“用户主动删空数据”误判为需要自动补回样板
+- 对外品牌名正式锁定为 `Conflux`，并已同步到 UI 文案、`docs/`、`README.md`、`index.html` 与 `package.json`
+- 首启引导 seed 已按发布要求收敛为 3 篇正式探讨性节点，统一使用 `Conflux` 项目标签并服务开源首次体验
+- 根目录 `README.md` 已重写为面向 GitHub 开源社区的工程化说明文档，当前基线可视为 `v1.0` 开源发布就绪
+- `v1.0.0 Release Candidate`：当前基线已完成品牌、文案、首启引导、数据主权边界与构建验收收口，可作为 GitHub 开源发布候选包
 
 ## 3. 回顾性里程碑
 
@@ -107,7 +125,6 @@
 - `fluxBlocks[].revisions[]` 线性版本历史
 - 任意版本恢复
 - revision 来源追溯
-- 关系语义进一步收口
 
 ### `v0.7` 嗅探质量验证与维度管理补强
 
@@ -120,18 +137,12 @@
 
 ### `v0.8` 引用语言与体验收口
 
-这是“部分进入代码、但尚未彻底收口”的阶段，不应再把它写成已经干净完成的发布。
+这是“部分进入代码、但并未作为单次发布收干净”的阶段。
 
-当前已落地的部分：
+已落地：
 
-- 核心链路的部分文案已经去魅化
-- `Adaptive Lens`、Drawer、同化预览、版本历史的表达比早期更统一
-
-当前仍未彻底完成的部分：
-
-- 站内仍有零星旧文案、旧术语与动作命名残留
-- 文档与代码在一段时间内发生过明显漂移
-- 体验语气还没有彻底统一到同一套产品语言
+- 核心链路文案已大幅去魅化
+- `Adaptive Lens`、Drawer、同化预览、版本历史表达已经统一到当前语言体系
 
 ### `v0.9` 段落级本地推荐与人工确认漏斗
 
@@ -142,7 +153,6 @@
 - 使用 `2500ms debounce + Entity Lexicon + Fuse.js` 做本地高置信预筛
 - 命中后只浮出右下角轻提示
 - 点击后打开 Drawer，并在用户确认后才调模型
-- `dimensions.source` 承担稳定关联写入职责
 
 ### `v1.0` 语义切块与线程串联
 
@@ -154,40 +164,76 @@
 - 通过 `project / source` 线程标签串联上下文
 - 批量调用 `addBlocks()` 渐进式落盘
 - 默认跳过逐块 AI 打标，避免并发洪峰
-- 已修复 UTF-8 编码损坏与危险的 chunk 去重逻辑
 
-## 4. 当前未完成事项
+## 4. 从未完成事项到版本规划
 
-以下问题依然成立：
+自本次文档改造开始，Conflux 不再保留散装“未完成事项”列表。
 
-- 没有后端、同步、权限和协作能力
-- `stage / source` 已进入数据模型，并已在 `/write`、`/feed`、`/graph` 完成第一轮低存在感接入；但还没有独立批量管理、统计或自动化规则层
-- 同化动作仍是前端直连模型，没有缓存、队列和任务层
-- 当前版本历史仍然是本地线性数组，不支持分支与跨设备同步
-- docs 与代码虽然已经大体对齐，但后续每轮改动后仍要继续同步，避免再次漂移
+所有待决问题必须被精确发配到以下版本里程碑：
+
+### `v1.1` 智能攻坚期
+
+定位：`Semantic & Fission`
+
+负责事项：
+
+- `混合召回引擎 (Hybrid Search)`
+  - 引入本地或极轻量级 Embedding 检索，辅助 `Entity Lexicon`
+  - 让 `Phantom Weaving` 具备同义词、近义词理解能力
+- `意图裂变器 (Intent Fission)`
+  - 在 Quick Capture 阶段拦截混杂长文本
+  - 通过大模型把输入拆成多个具备独立标签的原子知识块
+
+### `v1.2` 创作体验期
+
+定位：`Rich Media & Block Ergonomics`
+
+负责事项：
+
+- `多媒体承载 (Local Media Support)`
+  - 支持图片本地粘贴与拖拽上传
+  - 通过 `IndexedDB` 承载媒体资源，突破 `localStorage` 容量硬顶
+- `动态大纲与折叠 (Outliner & Fold)`
+  - 在主编辑器与 `Peek Drawer` 中补齐 TOC、大纲跳转与折叠能力
+
+### `v1.3` 信息流管网期
+
+定位：`Advanced Filtering & Canvas`
+
+负责事项：
+
+- `白板视图 (Infinite Canvas / Whiteboard)`
+  - 在 Feed / List / Graph 之外补齐自由拖拽二维看板
+- `高级属性看板 (Advanced Properties)`
+  - 提供表格视图与批量属性整理入口
+  - 放开维度的高级手动治理能力
+
+### `v2.0-Alpha` 平台跨越期
+
+定位：`Desktop Native & Interop`
+
+负责事项：
+
+- `架构逃逸 (Tauri Encapsulation)`
+  - 使用 `Tauri v2` 打包 React 产物
+  - 使用本地 `SQLite` 代替浏览器 `IndexedDB`
+- `系统级集成 (OS Integration)`
+  - 监听全局快捷键，在任何软件上层悬浮唤出 `Quick Capture`
+- `本地优先同步 (P2P / Git-backed Sync)`
+  - 介入文件系统，让笔记以 `Markdown / JSON` 形式落盘
+  - 为 WebDAV 或 Git 增量备份提供基础
 
 ## 5. 当前阶段结论
 
-当前最合理的判断不是“继续往后跳版本”，而是先把 `v1.0` 收稳。
+当前阶段依然不是继续往后跳版本，而是把 `v1.0` 稳定化基线收好，为连续的 `v1.x` 演进铺路。
 
-当前阶段应优先做：
+现在所有工作都必须回答一个问题：它究竟属于 `v1.1`、`v1.2`、`v1.3` 还是 `v2.0-Alpha`。
 
-1. 修正 docs 与代码现状的漂移，让所有文档重新指向同一个真实基线。
-2. 清理站内残留旧文案、乱码与历史交互术语。
-3. 为 `Phantom Weaving` 与长文切块补更多固定样本与回归验证。
-4. 处理小型技术债，降低后续继续演进的修改成本。
+如果答不出来，就不进入排期。
 
-## 6. 下一阶段建议
-
-如果没有更高优先级指令，下一阶段默认优先做这些事：
-
-1. 继续收口 `v0.8` 未完成的文案与交互统一工作。
-2. 补 `Phantom Weaving` 与 `Semantic Auto-Chunking` 的验证样本。
-3. 继续压低页面层耦合与遗留样例文件带来的维护成本。
-4. 继续减轻页面层和 store 层的小型技术债，降低后续演进成本。
-
-## 7. 继续开发前的推荐阅读顺序
+## 6. 继续开发前的推荐阅读顺序
 
 1. [`06-HANDOFF.md`](./06-HANDOFF.md)
 2. [`04-CHANGELOG.md`](./04-CHANGELOG.md)
 3. [`02-ARCHITECTURE.md`](./02-ARCHITECTURE.md)
+

@@ -1,6 +1,8 @@
 ﻿import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Search, X } from 'lucide-react'
+import { useTranslation } from '../../i18n/I18nProvider'
+import { displayDimensionValue } from '../../utils/displayTag'
 
 const MotionDiv = motion.div
 const tokenStyles = {
@@ -16,13 +18,6 @@ const tokenRemoveStyles = {
   project: 'text-purple-500 hover:text-purple-700',
   stage: 'text-zinc-400 hover:text-zinc-600',
   source: 'text-zinc-300 hover:text-zinc-500',
-}
-const dimensionLabels = {
-  domain: '领域',
-  format: '体裁',
-  project: '项目',
-  stage: '阶段',
-  source: '来源',
 }
 
 function buildTokenKey(token) {
@@ -40,8 +35,20 @@ export function OmniFilterBar({
   onSaveView,
   actions,
 }) {
+  const { language, t } = useTranslation()
   const [inputValue, setInputValue] = useState(query)
   const [selectedIndex, setSelectedIndex] = useState(0)
+
+  const dimensionLabels = useMemo(
+    () => ({
+      domain: t('editor.tagDimension.domain'),
+      format: t('editor.tagDimension.format'),
+      project: t('editor.tagDimension.project'),
+      stage: t('editor.tagDimension.stage'),
+      source: t('editor.tagDimension.source'),
+    }),
+    [t],
+  )
 
   useEffect(() => {
     setInputValue(query)
@@ -52,9 +59,11 @@ export function OmniFilterBar({
   const isSuggesting = Boolean(hashMatch)
 
   const filteredSuggestions = useMemo(() => {
-    const pool = tagSuggestions.filter((item) => item.value.toLowerCase().includes(tagQuery))
+    const pool = tagSuggestions.filter((item) =>
+      displayDimensionValue(item.dimension, item.value, language).toLowerCase().includes(tagQuery),
+    )
     return pool.slice(0, 10)
-  }, [tagQuery, tagSuggestions])
+  }, [language, tagQuery, tagSuggestions])
 
   useEffect(() => {
     setSelectedIndex(0)
@@ -87,8 +96,8 @@ export function OmniFilterBar({
                   tokenStyles[token.dimension] ?? tokenStyles.domain
                 }`}
               >
-                <span className="opacity-70">{dimensionLabels[token.dimension] ?? '标签'}</span>
-                <span>{`#${token.value}`}</span>
+                <span className="opacity-70">{dimensionLabels[token.dimension] ?? 'Tag'}</span>
+                <span>{`#${displayDimensionValue(token.dimension, token.value, language)}`}</span>
                 <button
                   type="button"
                   onClick={() => onRemoveToken(buildTokenKey(token))}
@@ -128,7 +137,7 @@ export function OmniFilterBar({
                   commitSuggestion(filteredSuggestions[selectedIndex])
                 }
               }}
-              placeholder="搜索内容... 或输入 # 添加筛选标签"
+              placeholder={t('feed.searchPlaceholder')}
               className="min-w-[220px] flex-1 bg-transparent text-sm text-zinc-900 outline-none placeholder:text-zinc-400"
             />
             {onSaveView ? (
@@ -137,7 +146,7 @@ export function OmniFilterBar({
                 onClick={onSaveView}
                 className="inline-flex shrink-0 items-center gap-1 rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-zinc-600 ring-1 ring-zinc-200 transition hover:text-zinc-900"
               >
-                + 保存视图
+                {t('feed.saveView')}
               </button>
             ) : null}
           </div>
@@ -146,7 +155,7 @@ export function OmniFilterBar({
         {actions ? <div className="shrink-0">{actions}</div> : null}
       </div>
 
-      <div className="mt-2 flex justify-end text-[11px] text-zinc-400">当前涌现 {resultCount} 个知识块</div>
+      <div className="mt-2 flex justify-end text-[11px] text-zinc-400">{t('feed.resultsCount', { count: resultCount })}</div>
 
       <AnimatePresence>
         {isSuggesting && filteredSuggestions.length > 0 ? (
@@ -171,9 +180,11 @@ export function OmniFilterBar({
                 >
                   <div className="flex min-w-0 items-center gap-2">
                     <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] text-zinc-500">
-                      {dimensionLabels[suggestion.dimension] ?? '标签'}
+                      {dimensionLabels[suggestion.dimension] ?? 'Tag'}
                     </span>
-                    <span className="truncate font-medium">{`#${suggestion.value}`}</span>
+                    <span className="truncate font-medium">
+                      {`#${displayDimensionValue(suggestion.dimension, suggestion.value, language)}`}
+                    </span>
                   </div>
                   <span className="text-[11px] text-zinc-400">{suggestion.count}</span>
                 </button>

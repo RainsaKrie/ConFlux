@@ -1,5 +1,7 @@
-import { Trash2 } from 'lucide-react'
+﻿import { Trash2 } from 'lucide-react'
+import { useTranslation } from '../../i18n/I18nProvider'
 import { contentToPlainText } from '../../utils/blocks'
+import { displayDimensionValue } from '../../utils/displayTag'
 
 const dimensionStyles = {
   domain: 'border border-blue-100 bg-blue-50 text-blue-600',
@@ -9,6 +11,7 @@ const dimensionStyles = {
 }
 
 export function KnowledgeCard({ block, onOpen, onDelete }) {
+  const { language, t } = useTranslation()
   const preview = contentToPlainText(block.content)
   const visibleDimensions = ['domain', 'format', 'project', 'stage']
   const sourceMetadata = (block.dimensions?.source ?? []).slice(0, 2)
@@ -41,7 +44,7 @@ export function KnowledgeCard({ block, onOpen, onDelete }) {
             </h3>
           </div>
           <div className="text-right text-[11px] uppercase tracking-[0.22em] text-zinc-400">
-            <div>Updated</div>
+            <div>{t('card.updated')}</div>
             <div className="mt-1 text-zinc-500">{block.updatedAt}</div>
           </div>
         </div>
@@ -59,7 +62,7 @@ export function KnowledgeCard({ block, onOpen, onDelete }) {
                   key={`${block.id}-${dimension}-${value}`}
                   className={`rounded-md px-2 py-0.5 text-[11px] font-medium ${dimensionStyles[dimension]}`}
                 >
-                  {value}
+                  {displayDimensionValue(dimension, value, language)}
                 </span>
               )),
             )}
@@ -69,7 +72,7 @@ export function KnowledgeCard({ block, onOpen, onDelete }) {
           <div className="mt-3 flex flex-wrap items-center gap-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
             {sourceMetadata.map((value) => (
               <span key={`${block.id}-source-${value}`} className="text-[10px] text-zinc-400/80">
-                #{value}
+                #{displayDimensionValue('source', value, language)}
               </span>
             ))}
           </div>

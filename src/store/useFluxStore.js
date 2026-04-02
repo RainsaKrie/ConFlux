@@ -1,19 +1,26 @@
 ﻿import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { seedFluxBlocks } from '../data/seedData'
+import { buildSeedFluxBlocks } from '../data/seedData'
+import { getInitialLanguage } from '../i18n/config'
+import { matchesDimensionValue } from '../utils/displayTag'
 
 const MAX_BLOCK_REVISIONS = 5
 const MAX_POOL_EVENTS = 12
+const MAX_AI_TASKS = 12
 
-const defaultSavedPools = [
-  {
-    id: 'default1',
-    name: 'Flux 冲刺',
-    filters: {
-      project: ['Flux'],
+const INITIAL_LANGUAGE = getInitialLanguage()
+
+function buildDefaultSavedPools(language = 'zh') {
+  return [
+    {
+      id: 'default1',
+      name: language === 'en' ? 'Conflux Sprint' : 'Conflux 冲刺',
+      filters: {
+        project: ['Conflux'],
+      },
     },
-  },
-]
+  ]
+}
 
 function buildTodayStamp() {
   return new Date().toISOString().slice(0, 10)
@@ -51,6 +58,20 @@ function normalizeBlock(block = {}) {
   }
 }
 
+function normalizeAiTasks(tasks = []) {
+  if (!Array.isArray(tasks)) return []
+
+  return tasks
+    .filter(Boolean)
+    .map((task) => ({ ...task }))
+    .sort((left, right) => {
+      const leftTime = new Date(left.updatedAt ?? left.createdAt ?? 0).getTime()
+      const rightTime = new Date(right.updatedAt ?? right.createdAt ?? 0).getTime()
+      return rightTime - leftTime
+    })
+    .slice(0, MAX_AI_TASKS)
+}
+
 function groupLegacyRevisions(revisions = []) {
   const grouped = new Map()
 
@@ -64,8 +85,17 @@ function groupLegacyRevisions(revisions = []) {
   return grouped
 }
 
-function hydrateFluxBlocks(blocks, legacyRevisions = []) {
-  const sourceBlocks = Array.isArray(blocks) && blocks.length ? blocks : seedFluxBlocks
+function hydrateFluxBlocks(
+  blocks,
+  legacyRevisions = [],
+  { language = INITIAL_LANGUAGE, seedWhenEmpty = true } = {},
+) {
+  const hasStoredBlocks = Array.isArray(blocks)
+  const sourceBlocks = hasStoredBlocks
+    ? blocks.length || !seedWhenEmpty
+      ? blocks
+      : buildSeedFluxBlocks(language)
+    : buildSeedFluxBlocks(language)
   const legacyMap = groupLegacyRevisions(legacyRevisions)
 
   return sourceBlocks.map((block) => {
@@ -82,8 +112,21 @@ function hydrateFluxBlocks(blocks, legacyRevisions = []) {
   })
 }
 
-function cloneSeedBlocks() {
-  return hydrateFluxBlocks(seedFluxBlocks)
+function cloneSeedBlocks(language = INITIAL_LANGUAGE) {
+  return hydrateFluxBlocks(buildSeedFluxBlocks(language), [], { language })
+}
+
+function resolvePersistedFluxBlocks(state, language = INITIAL_LANGUAGE) {
+  return Array.isArray(state.fluxBlocks)
+    ? hydrateFluxBlocks(state.fluxBlocks, state.recentAssimilationRevisions, {
+        language,
+        seedWhenEmpty: false,
+      })
+    : cloneSeedBlocks(language)
+}
+
+function resolvePersistedSavedPools(state, language = INITIAL_LANGUAGE) {
+  return Array.isArray(state.savedPools) ? state.savedPools : buildDefaultSavedPools(language)
 }
 
 function updateBlockRevisions(block, nextRevision) {
@@ -106,11 +149,12 @@ function createRevisionEntry(block, revision, kind) {
 export const useFluxStore = create(
   persist(
     (set, get) => ({
-      fluxBlocks: cloneSeedBlocks(),
-      savedPools: defaultSavedPools,
+      fluxBlocks: cloneSeedBlocks(INITIAL_LANGUAGE),
+      savedPools: buildDefaultSavedPools(INITIAL_LANGUAGE),
       peekBlockId: null,
       activePoolContext: null,
       recentPoolEvents: [],
+      recentAiTasks: [],
       addBlock: (block) =>
         set((state) => ({
           fluxBlocks: [normalizeBlock({ ...block, revisions: block.revisions ?? [] }), ...state.fluxBlocks],
@@ -157,6 +201,35 @@ export const useFluxStore = create(
             },
             ...state.recentPoolEvents,
           ].slice(0, MAX_POOL_EVENTS),
+        })),
+      startAiTask: (task) => {
+        const nextTask = {
+          id: `ai_task_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          status: 'running',
+          ...task,
+        }
+
+        set((state) => ({
+          recentAiTasks: normalizeAiTasks([nextTask, ...state.recentAiTasks]),
+        }))
+
+        return nextTask.id
+      },
+      updateAiTask: (taskId, patch = {}) =>
+        set((state) => ({
+          recentAiTasks: normalizeAiTasks(
+            state.recentAiTasks.map((task) =>
+              task.id === taskId
+                ? {
+                    ...task,
+                    ...patch,
+                    updatedAt: new Date().toISOString(),
+                  }
+                : task,
+            ),
+          ),
         })),
       applyAssimilationRevision: (revision) => {
         let storedRevision = null
@@ -296,6 +369,22 @@ export const useFluxStore = create(
               : block,
           ),
         })),
+      removeDimensionValueFromAllBlocks: (dimension, value) =>
+        set((state) => ({
+          fluxBlocks: state.fluxBlocks.map((block) => {
+            const currentValues = block.dimensions?.[dimension] ?? []
+            if (!currentValues.some((item) => matchesDimensionValue(dimension, item, value))) return block
+
+            return {
+              ...block,
+              dimensions: {
+                ...cloneDimensions(block.dimensions),
+                [dimension]: currentValues.filter((item) => !matchesDimensionValue(dimension, item, value)),
+              },
+              updatedAt: buildTodayStamp(),
+            }
+          }),
+        })),
       replaceBlock: (blockId, nextBlock) =>
         set((state) => ({
           fluxBlocks: state.fluxBlocks.map((block) => (block.id === blockId ? nextBlock : block)),
@@ -303,26 +392,26 @@ export const useFluxStore = create(
     }),
     {
       name: 'flux_blocks_store',
-      version: 2,
+      version: 3,
       migrate: (persistedState) => {
         const state = persistedState && typeof persistedState === 'object' ? persistedState : {}
 
         return {
           ...state,
           activePoolContext: state.activePoolContext ?? null,
-          fluxBlocks: hydrateFluxBlocks(state.fluxBlocks, state.recentAssimilationRevisions),
+          fluxBlocks: resolvePersistedFluxBlocks(state, INITIAL_LANGUAGE),
+          recentAiTasks: normalizeAiTasks(state.recentAiTasks),
           recentPoolEvents: Array.isArray(state.recentPoolEvents)
             ? state.recentPoolEvents.slice(0, MAX_POOL_EVENTS)
             : [],
-          savedPools: Array.isArray(state.savedPools) && state.savedPools.length
-            ? state.savedPools
-            : defaultSavedPools,
+          savedPools: resolvePersistedSavedPools(state, INITIAL_LANGUAGE),
         }
       },
       partialize: (state) => ({
         fluxBlocks: state.fluxBlocks,
         savedPools: state.savedPools,
         activePoolContext: state.activePoolContext,
+        recentAiTasks: state.recentAiTasks,
         recentPoolEvents: state.recentPoolEvents,
       }),
     },

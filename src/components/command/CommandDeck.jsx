@@ -3,49 +3,55 @@ import { Command } from 'cmdk'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Binary, Bot, Compass, FileSearch, Search } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import { useTranslation } from '../../i18n/I18nProvider'
 import { useFluxStore } from '../../store/useFluxStore'
 import { contentToPlainText } from '../../utils/blocks'
+import { displayDimensionValue } from '../../utils/displayTag'
 
 const MotionDiv = motion.div
 
-const actions = [
-  {
-    id: 'go-feed',
-    label: '新建闪念',
-    description: '打开知识流',
-    icon: Compass,
-    run: (navigate) => navigate('/feed'),
-  },
-  {
-    id: 'go-write',
-    label: '空白画布写作',
-    description: '打开写作场',
-    icon: Bot,
-    run: (navigate) => navigate('/write'),
-  },
-  {
-    id: 'go-graph',
-    label: '打开关系图谱',
-    description: '打开关系图',
-    icon: Binary,
-    run: (navigate) => navigate('/graph'),
-  },
-]
-
-function buildSnippet(block) {
+function buildSnippet(block, t, language) {
   const domainLabel = block.dimensions?.domain?.[0]
-  if (domainLabel) return `[${domainLabel}]`
+  if (domainLabel) return `[${displayDimensionValue('domain', domainLabel, language)}]`
 
   const plainText = contentToPlainText(block.content)
-  if (!plainText) return '暂无摘要'
+  if (!plainText) return t('feed.emptyPreview')
 
   return plainText.length > 28 ? `${plainText.slice(0, 28)}...` : plainText
 }
 
 export function CommandDeck({ isOpen, onOpenChange }) {
+  const { language, t } = useTranslation()
   const navigate = useNavigate()
   const fluxBlocks = useFluxStore((state) => state.fluxBlocks)
   const [query, setQuery] = useState('')
+
+  const actions = useMemo(
+    () => [
+      {
+        id: 'go-feed',
+        label: t('command.quickCapture'),
+        description: t('command.goFeed'),
+        icon: Compass,
+        run: (targetNavigate) => targetNavigate('/feed'),
+      },
+      {
+        id: 'go-write',
+        label: t('command.newNote'),
+        description: t('command.goWrite'),
+        icon: Bot,
+        run: (targetNavigate) => targetNavigate('/write'),
+      },
+      {
+        id: 'go-graph',
+        label: t('command.openGraph'),
+        description: t('command.goGraph'),
+        icon: Binary,
+        run: (targetNavigate) => targetNavigate('/graph'),
+      },
+    ],
+    [t],
+  )
 
   useEffect(() => {
     const handleKeyDown = (event) => {
@@ -108,7 +114,7 @@ export function CommandDeck({ isOpen, onOpenChange }) {
             >
               <Command
                 shouldFilter={false}
-                label="全局指令台"
+                label={t('command.title')}
                 className="max-h-[70vh] overflow-hidden"
               >
                 <div className="border-b border-zinc-100">
@@ -116,7 +122,7 @@ export function CommandDeck({ isOpen, onOpenChange }) {
                     autoFocus
                     value={query}
                     onValueChange={setQuery}
-                    placeholder="搜索知识流、命令或动作..."
+                    placeholder={t('command.placeholder')}
                     className="w-full px-6 py-4 text-lg text-zinc-900 outline-none placeholder:text-zinc-300"
                   />
                 </div>
@@ -124,7 +130,7 @@ export function CommandDeck({ isOpen, onOpenChange }) {
                 <Command.List className="max-h-[56vh] overflow-y-auto px-3 py-3">
                   <Command.Group className="mb-4">
                     <div className="px-3 pb-2 text-[11px] uppercase tracking-[0.22em] text-zinc-400">
-                      动作
+                      {t('command.actions')}
                     </div>
                     <div className="space-y-1">
                       {actions.map((action) => {
@@ -148,7 +154,7 @@ export function CommandDeck({ isOpen, onOpenChange }) {
 
                   <Command.Group>
                     <div className="px-3 pb-2 text-[11px] uppercase tracking-[0.22em] text-zinc-400">
-                      知识库
+                      {t('command.notes')}
                     </div>
                     {knowledgeResults.length > 0 ? (
                       <div className="space-y-1">
@@ -161,16 +167,16 @@ export function CommandDeck({ isOpen, onOpenChange }) {
                           >
                             <Search className="h-4 w-4 shrink-0 text-zinc-300" />
                             <div className="min-w-0 flex-1">
-                              <div className="truncate text-sm font-medium text-zinc-900">{block.title || '未命名笔记'}</div>
+                              <div className="truncate text-sm font-medium text-zinc-900">{block.title || t('common.untitledNote')}</div>
                             </div>
-                            <div className="max-w-[220px] truncate text-xs text-zinc-400">{buildSnippet(block)}</div>
+                            <div className="max-w-[220px] truncate text-xs text-zinc-400">{buildSnippet(block, t, language)}</div>
                           </Command.Item>
                         ))}
                       </div>
                     ) : (
                       <div className="flex items-center gap-3 rounded-xl px-3 py-6 text-sm text-zinc-400">
                         <FileSearch className="h-4 w-4" />
-                        <span>没有命中的知识块</span>
+                        <span>{t('command.noResults')}</span>
                       </div>
                     )}
                   </Command.Group>

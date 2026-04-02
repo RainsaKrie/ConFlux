@@ -211,21 +211,21 @@ export function buildThreadId() {
   return `thread_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`
 }
 
-export function buildThreadProjectLabel(text = '', threadId = '') {
+export function buildThreadProjectLabel(text = '', threadId = '', language = 'zh') {
   const plainText = contentToPlainText(text)
   const firstLine = plainText.split('\n')[0]?.trim() || plainText.trim()
-  const compact = firstLine.replace(/\s+/g, ' ').slice(0, 15).trim() || '长文切块'
+  const compact = firstLine.replace(/\s+/g, ' ').slice(0, 15).trim() || (language === 'en' ? 'Longform Chunk' : '长文切块')
   const suffix = threadId.replace(/^thread_/, '').slice(-6)
-  return `来源:${compact}_${suffix}`
+  return language === 'en' ? `Source:${compact}_${suffix}` : `来源:${compact}_${suffix}`
 }
 
-export function buildThreadSourceLabel(threadId = '') {
-  return `知识碎块:${threadId}`
+export function buildThreadSourceLabel(threadId = '', language = 'zh') {
+  return language === 'en' ? `Thread Chunk:${threadId}` : `知识碎块:${threadId}`
 }
 
-export function buildSemanticChunkTitle(chunk = '', index = 0, total = 1) {
+export function buildSemanticChunkTitle(chunk = '', index = 0, total = 1, language = 'zh') {
   const { headingTitle } = extractHeadingLine(chunk)
-  const baseTitle = headingTitle || buildBlockTitle(chunk)
+  const baseTitle = headingTitle || buildBlockTitle(chunk, language)
   if (total <= 1) return baseTitle
 
   const order = String(index + 1).padStart(2, '0')

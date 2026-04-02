@@ -1,17 +1,24 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react'
 import { useCallback } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Check, Clock3, ExternalLink, GitMerge, Hash, LoaderCircle, Network, Orbit, Plus, Sparkles, X } from 'lucide-react'
+import { Hash, LoaderCircle, Network, Orbit, Plus, Sparkles, X } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { ASSIMILATION_SYSTEM_PROMPT } from '../ai/prompts'
-import { RevisionDiffPanel } from '../components/assimilation/RevisionDiffPanel'
+import {
+  buildAssimilationSystemPrompt,
+  buildAssimilationUserPrompt,
+  buildClassificationSystemPrompt,
+  buildRetagUserPrompt,
+} from '../ai/prompts'
+import { AssimilationPreviewModal } from '../components/assimilation/AssimilationPreviewModal'
 import { EditorToolbar, FluxEditor } from '../components/editor/FluxEditor'
+import { PeekDrawer } from '../components/editor/PeekDrawer'
 import {
   buildContextRecommendationEngine,
   buildDrawerSummary,
   findContextRecommendation,
   readCurrentParagraphText,
 } from '../features/recommendation/contextRecommendation'
+import { useTranslation } from '../i18n/I18nProvider'
 import { useFluxStore } from '../store/useFluxStore'
 import { classifyQuickCapture } from '../utils/ai'
 import { AI_CONFIG_STORAGE_KEY, readAiConfig, resolveChatCompletionsUrl } from '../utils/aiConfig'
@@ -19,12 +26,12 @@ import { buildBlockId, contentToPlainText, getTodayStamp, normalizeBlockDimensio
 
 const primaryEditableDimensions = ['domain', 'format', 'project']
 const secondaryEditableDimensions = ['stage', 'source']
-const dimensionLabels = {
-  domain: '领域',
-  format: '体裁',
-  project: '项目',
-  stage: '阶段',
-  source: '来源',
+const dimensionLabelKeys = {
+  domain: 'editor.tagDimension.domain',
+  format: 'editor.tagDimension.format',
+  project: 'editor.tagDimension.project',
+  stage: 'editor.tagDimension.stage',
+  source: 'editor.tagDimension.source',
 }
 const dimensionFallbackValues = {
   domain: '未分类',
@@ -47,10 +54,7 @@ const dimensionStyles = {
   stage: 'border border-amber-100 bg-amber-50 text-amber-700',
   source: 'border border-emerald-100 bg-emerald-50 text-emerald-700',
 }
-const CLASSIFICATION_SYSTEM_PROMPT =
-  '我传给你一段笔记。请帮我完成两件事：1. 为这段笔记起一个极简的标题（10个字以内，不要任何标点符号）。2. 提取3个维度：domain(领域,最多2个)、format(体裁)、project(项目实体名,没有则留空)。所有输出必须使用【简体中文】。强制输出合法JSON：{"title":"概括性短标题", "domain":[],"format":[],"project":[]}。除 JSON 外不要输出任何多余字符。'
 const MotionSection = motion.section
-const MotionAside = motion.aside
 
 function extractJsonObject(text = '') {
   const fenced = text.match(/```json\s*([\s\S]*?)```/i)
@@ -110,24 +114,6 @@ function shouldReplaceWithAiTitle(currentTitle, content, aiTitle) {
   return false
 }
 
-function formatRevisionTime(value) {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-
-  return new Intl.DateTimeFormat('zh-CN', {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(date)
-}
-
-function getRevisionLabel(revision) {
-  if (revision?.kind === 'restore') return '恢复记录'
-  if (revision?.kind === 'rollback') return '回滚记录'
-  return '笔记更新'
-}
-
 function parseTagInputRoute(inputValue = '') {
   const trimmed = inputValue.trim()
   if (!trimmed) return null
@@ -159,9 +145,10 @@ function parseTagInputRoute(inputValue = '') {
 }
 
 export function EditorPage() {
+  const { language, t } = useTranslation()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const [saveState, setSaveState] = useState('所有修改已自动保存')
+  const [saveState, setSaveState] = useState(() => t('editor.saved'))
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
   const [isAddingTag, setIsAddingTag] = useState(false)
@@ -188,7 +175,9 @@ export function EditorPage() {
   const recordPoolEvent = useFluxStore((state) => state.recordPoolEvent)
   const restoreBlockRevision = useFluxStore((state) => state.restoreBlockRevision)
   const setPeekBlockId = useFluxStore((state) => state.setPeekBlockId)
+  const startAiTask = useFluxStore((state) => state.startAiTask)
   const updateBlock = useFluxStore((state) => state.updateBlock)
+  const updateAiTask = useFluxStore((state) => state.updateAiTask)
 
   const block = useMemo(
     () => fluxBlocks.find((item) => item.id === blockId) ?? null,
@@ -211,18 +200,21 @@ export function EditorPage() {
     () => normalizeBlockDimensions(peekBlock?.dimensions ?? {}),
     [peekBlock?.dimensions],
   )
-  const peekHasSecondaryMetadata = useMemo(
-    () => secondaryEditableDimensions.some((dimension) => (peekDimensions[dimension] ?? []).length > 0),
-    [peekDimensions],
-  )
   const peekBlockRevisions = useMemo(
     () => (peekBlock?.revisions ?? []).slice(0, 5),
     [peekBlock?.revisions],
   )
-  const activeDocumentKey = blockId ?? 'new'
+  const activeDocumentKey = `${blockId ?? 'new'}-${language}`
   const activeEditorBlockId = blockId ?? pendingCreatedIdRef.current ?? null
   const activeEditorBlockTitle = title.trim() || block?.title || ''
-  const noteBadge = block?.id ? block.id.replace('block_', '').slice(-6) : 'new'
+  const noteBadge = block?.id ? block.id.replace('block_', '').slice(-6) : t('common.untitledNote')
+  const dimensionLabels = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(dimensionLabelKeys).map(([dimension, key]) => [dimension, t(key)]),
+      ),
+    [t],
+  )
   const recommendationEngine = useMemo(
     () => buildContextRecommendationEngine(fluxBlocks, activeEditorBlockId),
     [activeEditorBlockId, fluxBlocks],
@@ -281,8 +273,8 @@ export function EditorPage() {
     setDrawerRecommendation(null)
     setDrawerSummary('')
     setAssimilationPreview(null)
-    setSaveState('所有修改已自动保存')
-  }, [block?.content, block?.dimensions, block?.id, block?.title])
+    setSaveState(t('editor.saved'))
+  }, [block?.content, block?.dimensions, block?.id, block?.title, t])
 
   useEffect(() => {
     setSelectedRevisionId((current) => {
@@ -304,7 +296,7 @@ export function EditorPage() {
 
     aiEnrichedIdsRef.current.add(targetId)
     try {
-      const aiTags = await classifyQuickCapture(mergedText, aiConfig)
+      const aiTags = await classifyQuickCapture(mergedText, aiConfig, language)
       const normalized = normalizeBlockDimensions({
         domain: aiTags.domain,
         format: aiTags.format,
@@ -327,13 +319,13 @@ export function EditorPage() {
     } finally {
       aiEnrichedIdsRef.current.delete(targetId)
     }
-  }, [updateBlock])
+  }, [language, updateBlock])
 
   const persistDocument = useCallback((nextTitle, nextContent) => {
     const plainTitle = nextTitle.trim()
     const plainContent = contentToPlainText(nextContent)
     if (!plainTitle && !plainContent) {
-      setSaveState('所有修改已自动保存')
+      setSaveState(t('editor.saved'))
       return
     }
 
@@ -346,7 +338,7 @@ export function EditorPage() {
         content: nextContent,
         updatedAt: timestamp,
       }))
-      setSaveState('所有修改已自动保存')
+      setSaveState(t('editor.saved'))
       return
     }
 
@@ -366,8 +358,8 @@ export function EditorPage() {
     })
     navigate(`/write?id=${newId}`, { replace: true })
     void enrichBlockWithAi(newId, nextTitle, nextContent)
-    setSaveState('所有修改已自动保存')
-  }, [addBlock, blockId, enrichBlockWithAi, navigate, updateBlock])
+    setSaveState(t('editor.saved'))
+  }, [addBlock, blockId, enrichBlockWithAi, navigate, t, updateBlock])
 
   const handleRemoveDimension = (dimension, value) => {
     const activeBlockId = blockId || pendingCreatedIdRef.current
@@ -385,7 +377,7 @@ export function EditorPage() {
   const handleAddTag = () => {
     const activeBlockId = blockId || pendingCreatedIdRef.current
     if (!activeBlockId) {
-      window.alert('请先输入标题或正文，系统创建笔记后再管理标签。')
+      window.alert(t('editor.missingDraftForTags'))
       return
     }
 
@@ -432,7 +424,7 @@ export function EditorPage() {
   const handleRetagWithAi = async () => {
     const activeBlockId = blockId || pendingCreatedIdRef.current
     if (!activeBlockId) {
-      window.alert('请先输入内容并等待笔记创建后，再让 AI 重新审视标签。')
+      window.alert(t('editor.missingDraftForRetag'))
       return
     }
 
@@ -451,9 +443,16 @@ export function EditorPage() {
     }
 
     if (!aiConfig?.apiKey?.trim()) {
-      window.alert('请先在左侧边栏底部的设置中配置大模型 API 密钥。')
+      window.alert(t('editor.missingApiKey'))
       return
     }
+
+    const taskId = startAiTask({
+      blockId: activeBlockId,
+      blockTitle: title.trim() || block?.title || t('common.untitledNote'),
+      message: t('editor.retagTaskRunning'),
+      type: 'retag',
+    })
 
     setIsRetagging(true)
     try {
@@ -468,11 +467,11 @@ export function EditorPage() {
           messages: [
             {
               role: 'system',
-              content: CLASSIFICATION_SYSTEM_PROMPT,
+              content: buildClassificationSystemPrompt(language),
             },
             {
               role: 'user',
-              content: `请为这篇知识笔记重新审视并打标：\n${mergedText}`,
+              content: buildRetagUserPrompt(mergedText, language),
             },
           ],
         }),
@@ -495,9 +494,17 @@ export function EditorPage() {
         },
         updatedAt: getTodayStamp(),
       }))
+      updateAiTask(taskId, {
+        message: t('editor.retagTaskDone'),
+        status: 'succeeded',
+      })
     } catch (error) {
-      const message = error instanceof Error ? error.message : '未知错误'
-      window.alert(`AI 重新审视失败：${message}`)
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      updateAiTask(taskId, {
+        message: t('editor.retagTaskFailed', { message }),
+        status: 'failed',
+      })
+      window.alert(t('editor.retagFailed', { message }))
     } finally {
       setIsRetagging(false)
     }
@@ -534,18 +541,26 @@ export function EditorPage() {
 
   const handleAssimilateRecommendation = useCallback(async () => {
     if (!peekBlock || !isRecommendationDrawerActive || !drawerRecommendation?.paragraph?.trim()) {
-      window.alert('请先从智能推荐打开候选笔记，再执行原文更新。')
+      window.alert(t('editor.assimilationNeedRecommendation'))
       return
     }
 
     const aiConfig = readAiConfig()
     if (!aiConfig.apiKey?.trim()) {
-      window.alert('请先在左侧边栏底部的设置中配置大模型 API 密钥。')
+      window.alert(t('editor.missingApiKey'))
       return
     }
 
-    const noteTitle = title.trim() || block?.title || '未命名笔记'
+    const noteTitle = title.trim() || block?.title || t('common.untitledNote')
     const paragraph = drawerRecommendation.paragraph.trim()
+    const taskId = startAiTask({
+      blockId: activeEditorBlockId,
+      blockTitle: activeEditorBlockTitle || noteTitle,
+      message: t('editor.assimilationTaskRunning'),
+      targetBlockId: peekBlock.id,
+      targetBlockTitle: peekBlock.title,
+      type: 'assimilation',
+    })
 
     setAssimilatingTargetId(peekBlock.id)
     try {
@@ -560,13 +575,19 @@ export function EditorPage() {
           messages: [
             {
               role: 'system',
-              content: ASSIMILATION_SYSTEM_PROMPT,
+              content: buildAssimilationSystemPrompt(language),
             },
             {
               role: 'user',
-              content: `【当前写作段落】：\n标题：${noteTitle}\n段落：${paragraph}\n\n【需要被更新的原始笔记标题】：\n${
-                peekBlock.title
-              }\n\n【原始笔记正文】：\n${peekBlock.content || '暂无内容'}`,
+              content: buildAssimilationUserPrompt(
+                {
+                  noteTitle,
+                  paragraph,
+                  targetTitle: peekBlock.title,
+                  targetContent: peekBlock.content || '',
+                },
+                language,
+              ),
             },
           ],
         }),
@@ -584,7 +605,7 @@ export function EditorPage() {
         : `<p>${normalizedText.replace(/\n/g, '<br />')}</p>`
 
       if (!contentToPlainText(nextContent).trim()) {
-        throw new Error('模型没有返回可用内容')
+        throw new Error(language === 'en' ? 'Model returned empty content' : '模型没有返回可用内容')
       }
 
       setAssimilationPreview({
@@ -595,13 +616,34 @@ export function EditorPage() {
         contextParagraph: paragraph,
       })
       setPeekBlockId(peekBlock.id)
+      updateAiTask(taskId, {
+        message: t('editor.assimilationTaskDone'),
+        status: 'succeeded',
+      })
     } catch (error) {
-      const message = error instanceof Error ? error.message : '未知错误'
-      window.alert(`原文更新失败：${message}`)
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      updateAiTask(taskId, {
+        message: t('editor.assimilationTaskFailed', { message }),
+        status: 'failed',
+      })
+      window.alert(t('editor.assimilationFailed', { message }))
     } finally {
       setAssimilatingTargetId(null)
     }
-  }, [block?.title, drawerRecommendation, isRecommendationDrawerActive, peekBlock, setPeekBlockId, title])
+  }, [
+    activeEditorBlockId,
+    activeEditorBlockTitle,
+    block?.title,
+    drawerRecommendation,
+    isRecommendationDrawerActive,
+    language,
+    peekBlock,
+    setPeekBlockId,
+    startAiTask,
+    t,
+    title,
+    updateAiTask,
+  ])
 
   const handleCancelAssimilationPreview = useCallback(() => {
     setAssimilationPreview(null)
@@ -629,7 +671,7 @@ export function EditorPage() {
       recordPoolEvent({
         blockId: assimilationPreview.blockId,
         blockTitle: assimilationPreview.blockTitle,
-        message: '已更新原始笔记',
+        message: t('editor.poolEventAssimilation'),
         poolContextKey: activePoolContext.key,
         poolId: activePoolContext.poolId,
         poolName: activePoolContext.name,
@@ -647,13 +689,46 @@ export function EditorPage() {
     assimilationPreview,
     recordPoolEvent,
     setPeekBlockId,
+    t,
   ])
+
+  const formatRevisionRestoreTime = (value) => {
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return value
+
+    return new Intl.DateTimeFormat(language === 'en' ? 'en-US' : 'zh-CN', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(date)
+  }
+
+  const handleClosePeekDrawer = useCallback(() => {
+    setPeekBlockId(null)
+    setDrawerRecommendation(null)
+    setDrawerSummary('')
+  }, [setPeekBlockId])
+
+  const handleNavigateToPeekBlock = useCallback(() => {
+    if (!peekBlock) return
+    navigate(`/write?id=${peekBlock.id}`)
+    setPeekBlockId(null)
+  }, [navigate, peekBlock, setPeekBlockId])
+
+  const handleNavigateToSourceBlock = useCallback(() => {
+    if (!selectedRevision?.sourceBlockId) return
+    navigate(`/write?id=${selectedRevision.sourceBlockId}`)
+  }, [navigate, selectedRevision?.sourceBlockId])
 
   const handleRestoreFromDrawer = () => {
     if (!peekBlock || !selectedRevision || isSelectedRevisionCurrent) return
 
     const confirmed = window.confirm(
-      `确认将《${peekBlock.title || '当前笔记'}》恢复到 ${formatRevisionTime(selectedRevision.createdAt)} 的版本吗？`,
+      t('editor.confirmRestore', {
+        title: peekBlock.title || t('common.untitledNote'),
+        time: formatRevisionRestoreTime(selectedRevision.createdAt),
+      }),
     )
     if (!confirmed) return
 
@@ -665,7 +740,7 @@ export function EditorPage() {
       recordPoolEvent({
         blockId: restoredRevision.blockId,
         blockTitle: restoredRevision.blockTitle,
-        message: '已恢复至历史版本',
+        message: t('editor.poolEventRollback'),
         poolContextKey: restoredRevision.poolContextKey,
         poolId: restoredRevision.poolId,
         poolName: restoredRevision.poolName,
@@ -680,11 +755,11 @@ export function EditorPage() {
     }
 
     if (blockId && block && title === (block.title ?? '')) {
-      setSaveState('所有修改已自动保存')
+      setSaveState(t('editor.saved'))
       return
     }
 
-    setSaveState('正在自动保存...')
+    setSaveState(t('editor.saving'))
     window.clearTimeout(titleSaveTimeoutRef.current)
     titleSaveTimeoutRef.current = window.setTimeout(() => {
       persistDocument(title, content)
@@ -693,7 +768,7 @@ export function EditorPage() {
     return () => {
       window.clearTimeout(titleSaveTimeoutRef.current)
     }
-  }, [block, blockId, content, persistDocument, title])
+  }, [block, blockId, content, persistDocument, t, title])
 
   useEffect(() => {
     if (isHydratingRef.current) {
@@ -702,11 +777,11 @@ export function EditorPage() {
     }
 
     if (blockId && block && content === (block.content ?? '')) {
-      setSaveState('所有修改已自动保存')
+      setSaveState(t('editor.saved'))
       return
     }
 
-    setSaveState('正在自动保存...')
+    setSaveState(t('editor.saving'))
     window.clearTimeout(contentSaveTimeoutRef.current)
     contentSaveTimeoutRef.current = window.setTimeout(() => {
       persistDocument(title, content)
@@ -715,7 +790,7 @@ export function EditorPage() {
     return () => {
       window.clearTimeout(contentSaveTimeoutRef.current)
     }
-  }, [block, blockId, content, persistDocument, title])
+  }, [block, blockId, content, persistDocument, t, title])
 
   useEffect(() => {
     if (isHydratingRef.current) return undefined
@@ -760,10 +835,10 @@ export function EditorPage() {
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-2">
               <span className="rounded-full bg-zinc-100 px-3 py-1 text-[11px] font-medium uppercase tracking-[0.24em] text-zinc-500">
-                note {noteBadge}
+                {t('editor.noteBadge', { badge: noteBadge })}
               </span>
               <span className="text-[11px] uppercase tracking-[0.2em] text-zinc-300">
-                {block?.updatedAt ?? 'draft'}
+                {block?.updatedAt ?? t('editor.draft')}
               </span>
               {activePoolContext ? (
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 py-1 text-[11px] font-medium text-zinc-600 shadow-sm">
@@ -779,7 +854,7 @@ export function EditorPage() {
             type="text"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
-            placeholder="在此输入标题..."
+            placeholder={t('editor.titlePlaceholder')}
             className="flux-title-input mb-4 w-full border-none bg-transparent outline-none"
           />
 
@@ -798,7 +873,7 @@ export function EditorPage() {
                     className="rounded-sm opacity-0 transition-opacity group-hover:opacity-100 hover:bg-white/60"
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={() => handleRemoveDimension(dimension, value)}
-                    aria-label={`删除${dimensionLabels[dimension]}标签 ${value}`}
+                    aria-label={`${t('common.remove')}${dimensionLabels[dimension]} ${value}`}
                   >
                     <X className="h-2.5 w-2.5" />
                   </button>
@@ -811,7 +886,7 @@ export function EditorPage() {
                 <input
                   autoFocus
                   value={tagInput}
-                  placeholder="输入标签... (@领域 /体裁 !阶段 ^来源)"
+                  placeholder={t('editor.tagInputPlaceholder')}
                   className={`w-48 min-w-[180px] flex-1 rounded-md border border-zinc-200 bg-white px-2 py-1 text-[11px] outline-none ring-2 ring-indigo-500/10 placeholder:text-zinc-400 ${tagInputTextClass}`}
                   onChange={(event) => setTagInput(event.target.value)}
                   onKeyDown={(event) => {
@@ -833,7 +908,7 @@ export function EditorPage() {
                   onMouseDown={(event) => event.preventDefault()}
                   onClick={handleAddTag}
                 >
-                  添加
+                  {t('editor.addTag')}
                 </button>
                 <button
                   type="button"
@@ -844,7 +919,7 @@ export function EditorPage() {
                     setIsAddingTag(false)
                   }}
                 >
-                  取消
+                  {t('editor.cancelTag')}
                 </button>
               </div>
             ) : (
@@ -856,7 +931,7 @@ export function EditorPage() {
                   onClick={() => setIsAddingTag(true)}
                 >
                   <Plus className="h-3 w-3" />
-                  <span>添加标签</span>
+                  <span>{t('editor.addTagButton')}</span>
                 </button>
               </>
             )}
@@ -875,7 +950,7 @@ export function EditorPage() {
               ) : (
                 <Sparkles size={12} strokeWidth={2} />
               )}
-              <span>{isRetagging ? 'AI 审视中...' : 'AI 重新审视'}</span>
+              <span>{isRetagging ? t('editor.retagBusy') : t('editor.retagIdle')}</span>
             </button>
           </div>
 
@@ -899,7 +974,7 @@ export function EditorPage() {
                       className="ml-1 rounded-sm opacity-0 transition-opacity group-hover:opacity-100 hover:text-zinc-600"
                       onMouseDown={(event) => event.preventDefault()}
                       onClick={() => handleRemoveDimension(dimension, value)}
-                      aria-label={`删除${dimensionLabels[dimension]}标签 ${value}`}
+                      aria-label={`${t('common.remove')}${dimensionLabels[dimension]} ${value}`}
                     >
                       <X className="h-2 w-2" />
                     </button>
@@ -927,333 +1002,50 @@ export function EditorPage() {
       <button
         type="button"
         onClick={handleOpenRecommendationDrawer}
-        aria-label={recommendedBlock ? `打开智能推荐候选：${recommendedBlock.title}` : '暂无智能推荐'}
+        aria-label={
+          recommendedBlock
+            ? t('editor.recommendationAria', { title: recommendedBlock.title })
+            : t('editor.recommendationEmptyAria')
+        }
         className={`fixed bottom-6 right-6 z-40 flex items-center gap-1.5 rounded-full border border-zinc-200/50 bg-white/80 px-2 py-1 text-[10px] text-zinc-400 shadow-sm transition-all hover:text-indigo-600 ${
           recommendedBlock ? 'cursor-pointer opacity-100' : 'pointer-events-none opacity-0'
         }`}
       >
         <Network size={10} strokeWidth={2} />
-        <span>发现相关节点</span>
+        <span>{t('editor.recommendationCta')}</span>
       </button>
 
       <AnimatePresence>
         {assimilationPreview ? (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[70] bg-zinc-900/20 backdrop-blur-sm"
-          >
-            <motion.div
-              initial={{ opacity: 0, y: 18, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 12, scale: 0.98 }}
-              transition={{ type: 'spring', stiffness: 280, damping: 24 }}
-              className="absolute left-1/2 top-1/2 flex max-h-[86vh] w-[min(960px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-[28px] border border-zinc-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.14)]"
-            >
-              <div className="border-b border-zinc-100 px-6 py-5">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-400">原文更新预览</div>
-                    <h3 className="mt-1 text-xl font-semibold text-zinc-950">{assimilationPreview.blockTitle}</h3>
-                    <p className="mt-2 text-sm leading-6 text-zinc-500">
-                      这次只会把当前段落的新增信息合并进原始笔记。请先核对预览，再决定是否写回。
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleCancelAssimilationPreview}
-                    className="rounded-full px-3 py-1.5 text-xs text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-800"
-                  >
-                    取消
-                  </button>
-                </div>
-
-                <div className="mt-4 grid gap-3 md:grid-cols-2">
-                  <RevisionDiffPanel
-                    beforeContent={assimilationPreview.beforeContent}
-                    afterContent={assimilationPreview.afterContent}
-                    beforeLabel="当前版本"
-                    afterLabel="拟更新后"
-                    className="md:col-span-2"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between gap-3 border-t border-zinc-100 px-6 py-4">
-                <div className="text-xs text-zinc-400">应用后仍可在右侧抽屉的版本历史中恢复。</div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleCancelAssimilationPreview}
-                    className="rounded-xl border border-zinc-200 bg-white px-4 py-2 text-sm font-medium text-zinc-600 transition hover:bg-zinc-50"
-                  >
-                    暂不应用
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleApplyAssimilation}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500"
-                  >
-                    <Check size={12} strokeWidth={2} />
-                    <span>确认更新</span>
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
+          <AssimilationPreviewModal
+            preview={assimilationPreview}
+            onApply={handleApplyAssimilation}
+            onCancel={handleCancelAssimilationPreview}
+          />
         ) : null}
       </AnimatePresence>
 
       <AnimatePresence>
         {peekBlock ? (
-          <MotionAside
-            initial={{ x: '100%' }}
-            animate={{ x: 0 }}
-            exit={{ x: '100%' }}
-            transition={{ type: 'spring', stiffness: 280, damping: 30 }}
-            className="fixed top-0 right-0 h-screen w-[500px] overflow-y-auto border-l border-zinc-200/80 bg-white px-10 pt-6 pb-10 shadow-[-20px_0_60px_-15px_rgba(0,0,0,0.1)] z-50 md:w-[600px]"
-          >
-            <div className="flex items-center justify-between gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  setPeekBlockId(null)
-                  setDrawerRecommendation(null)
-                  setDrawerSummary('')
-                }}
-                className="rounded-full px-3 py-1.5 text-xs text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700"
-              >
-                <span className="inline-flex items-center gap-1.5">
-                  <X size={12} strokeWidth={2} />
-                  <span>关闭</span>
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  navigate(`/write?id=${peekBlock.id}`)
-                  setPeekBlockId(null)
-                }}
-                className="rounded-full px-3 py-1.5 text-xs font-medium text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900"
-              >
-                <span className="inline-flex items-center gap-1.5">
-                  <ExternalLink size={12} strokeWidth={2} />
-                  <span>打开完整编辑页</span>
-                </span>
-              </button>
-            </div>
-
-            {isRecommendationDrawerActive ? (
-              <div className="mt-5 rounded-3xl border border-zinc-200/80 bg-zinc-50/80 p-4">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-400">智能推荐</div>
-                    <p className="mt-2 text-sm leading-6 text-zinc-500">
-                      当前候选由本地段落推荐触发，仅在你确认后才会执行原文更新。
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={handleExtractDrawerSummary}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-600 transition hover:bg-zinc-100 hover:text-zinc-900"
-                    >
-                      <Sparkles size={12} strokeWidth={2} />
-                      <span>提取核心摘要</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleAssimilateRecommendation()}
-                      disabled={assimilatingTargetId === peekBlock.id}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-wait disabled:opacity-70"
-                    >
-                      {assimilatingTargetId === peekBlock.id ? (
-                        <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <GitMerge size={12} strokeWidth={2} />
-                      )}
-                      <span>更新原文</span>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="mt-4 rounded-2xl border border-zinc-200/80 bg-white px-4 py-3">
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-400">当前段落</div>
-                  <p className="mt-2 text-sm leading-6 text-zinc-600">{drawerRecommendation?.paragraph}</p>
-                </div>
-
-                {drawerRecommendation?.matchedTerms?.length ? (
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    {drawerRecommendation.matchedTerms.slice(0, 4).map((term) => (
-                      <span
-                        key={`${peekBlock.id}-${term}`}
-                        className="rounded-full border border-indigo-100 bg-indigo-50 px-2.5 py-1 text-[11px] font-medium text-indigo-600"
-                      >
-                        {term}
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
-
-                {drawerSummary ? (
-                  <div className="mt-4 rounded-2xl border border-emerald-100 bg-emerald-50/80 px-4 py-3">
-                    <div className="text-[11px] uppercase tracking-[0.18em] text-emerald-600">本地摘要</div>
-                    <p className="mt-2 text-sm leading-6 text-emerald-900">{drawerSummary}</p>
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-
-            <h2 className="mb-4 mt-6 text-2xl font-semibold text-zinc-900">
-              {peekBlock.title || '未命名笔记'}
-            </h2>
-
-            <div className="flex flex-wrap items-center gap-2">
-              {primaryEditableDimensions.flatMap((dimension) =>
-                peekDimensions[dimension].map((value) => (
-                  <span
-                    key={`peek-${peekBlock.id}-${dimension}-${value}`}
-                    className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium ${dimensionStyles[dimension]}`}
-                  >
-                    <span className="opacity-70">{dimensionLabels[dimension]}</span>
-                    <span>·</span>
-                    <span>{value}</span>
-                  </span>
-                )),
-              )}
-            </div>
-
-            {peekHasSecondaryMetadata ? (
-              <div className="mt-3 flex flex-wrap items-center gap-1.5 text-zinc-300">
-                <span className="select-none text-[10px]">|</span>
-                {secondaryEditableDimensions.flatMap((dimension) =>
-                  (peekDimensions[dimension] ?? []).map((value) => (
-                    <span
-                      key={`peek-secondary-${peekBlock.id}-${dimension}-${value}`}
-                      className={`inline-flex items-center ${
-                        dimension === 'stage'
-                          ? 'text-center text-[10px] uppercase font-mono tracking-wider text-zinc-400 bg-transparent border border-zinc-200/50 border-dashed px-1.5 py-0.5 rounded-sm'
-                          : 'gap-1 text-[10px] text-zinc-400/80 bg-transparent'
-                      }`}
-                    >
-                      {dimension === 'source' ? <Hash size={8} strokeWidth={2} className="shrink-0" /> : null}
-                      <span>{dimension === 'stage' ? `!${value}` : value}</span>
-                    </span>
-                  )),
-                )}
-              </div>
-            ) : null}
-
-            {peekBlockRevisions.length ? (
-              <div className="mt-6 rounded-3xl border border-zinc-200/80 bg-zinc-50/80 p-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-400">版本历史</div>
-                    <div className="mt-1 text-sm font-medium text-zinc-900">
-                      最近 {peekBlockRevisions.length} 次版本记录
-                    </div>
-                  </div>
-                  {selectedRevision ? (
-                    <button
-                      type="button"
-                      onClick={handleRestoreFromDrawer}
-                      disabled={isSelectedRevisionCurrent}
-                      className="rounded-md bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-rose-500 disabled:cursor-not-allowed disabled:opacity-45"
-                    >
-                      恢复此版本
-                    </button>
-                  ) : null}
-                </div>
-
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {peekBlockRevisions.map((revision) => (
-                    <button
-                      key={revision.id}
-                      type="button"
-                      onClick={() => setSelectedRevisionId(revision.id)}
-                      className={`rounded-full border px-3 py-1.5 text-[11px] font-medium transition ${
-                        selectedRevision?.id === revision.id
-                          ? 'border-zinc-900 bg-zinc-900 text-white'
-                          : 'border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:bg-zinc-100'
-                      }`}
-                    >
-                      {formatRevisionTime(revision.createdAt)}
-                    </button>
-                  ))}
-                </div>
-
-                {selectedRevision ? (
-                  <div className="mt-4 space-y-4">
-                    <div className="flex flex-wrap items-center gap-2 text-[11px] text-zinc-500">
-                      <span className="inline-flex items-center gap-1 rounded-full border border-zinc-200 bg-white px-2.5 py-1">
-                        <Clock3 size={12} />
-                        {formatRevisionTime(selectedRevision.createdAt)}
-                      </span>
-                      <span
-                        className={`rounded-full border px-2.5 py-1 font-medium ${
-                          isSelectedRevisionCurrent
-                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                            : 'border-zinc-200 bg-white text-zinc-600'
-                        }`}
-                      >
-                        {isSelectedRevisionCurrent ? '当前版本' : '历史版本'}
-                      </span>
-                      <span className="rounded-full border border-zinc-200 bg-white px-2.5 py-1">
-                        {getRevisionLabel(selectedRevision)}
-                      </span>
-                      {selectedRevision.poolName ? (
-                        <span className="rounded-full border border-zinc-200 bg-white px-2.5 py-1">
-                          {selectedRevision.poolName}
-                        </span>
-                      ) : null}
-                    </div>
-
-                    {selectedRevision?.sourceBlockId ? (
-                      <button
-                        type="button"
-                        onClick={() => navigate(`/write?id=${selectedRevision.sourceBlockId}`)}
-                        className="mt-1.5 inline-flex cursor-pointer items-center gap-1.5 rounded border border-zinc-200/60 bg-zinc-100 px-2 py-0.5 text-[10px] font-medium text-zinc-500 transition-colors hover:bg-zinc-200/50"
-                      >
-                        <GitMerge size={10} strokeWidth={2} className="text-zinc-400" />
-                        <span>{`来源笔记: ${selectedRevisionSourceBlock?.title || selectedRevision.sourceBlockTitle}`}</span>
-                      </button>
-                    ) : null}
-
-                    {selectedRevision.contextParagraph ? (
-                      <div className="rounded-2xl border border-indigo-100 bg-indigo-50/70 px-4 py-3">
-                        <div className="text-[11px] uppercase tracking-[0.18em] text-indigo-500">
-                          {selectedRevision.kind === 'assimilation' ? '更新依据' : '恢复参照'}
-                        </div>
-                        <p className="mt-2 text-sm leading-6 text-indigo-900">
-                          {selectedRevision.contextParagraph}
-                        </p>
-                      </div>
-                    ) : null}
-
-                    <RevisionDiffPanel
-                      beforeContent={selectedRevision.beforeContent}
-                      afterContent={selectedRevision.afterContent}
-                      beforeLabel={selectedRevision.kind === 'assimilation' ? '变更前' : '恢复前'}
-                      afterLabel={selectedRevision.kind === 'assimilation' ? '变更后' : '恢复后'}
-                      compact
-                    />
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-
-            {peekBlock.content?.trim() ? (
-              <div
-                className="prose-readable mt-8 text-[15px] leading-relaxed text-zinc-700"
-                dangerouslySetInnerHTML={{ __html: peekBlock.content }}
-              />
-            ) : (
-              <div className="mt-8 text-sm font-light leading-relaxed text-zinc-500">
-                这篇笔记暂时还没有正文内容。
-              </div>
-            )}
-          </MotionAside>
+          <PeekDrawer
+            assimilatingTargetId={assimilatingTargetId}
+            drawerRecommendation={drawerRecommendation}
+            drawerSummary={drawerSummary}
+            isRecommendationDrawerActive={isRecommendationDrawerActive}
+            isSelectedRevisionCurrent={isSelectedRevisionCurrent}
+            onAssimilateRecommendation={handleAssimilateRecommendation}
+            onClose={handleClosePeekDrawer}
+            onExtractDrawerSummary={handleExtractDrawerSummary}
+            onNavigateToPeekBlock={handleNavigateToPeekBlock}
+            onNavigateToSourceBlock={handleNavigateToSourceBlock}
+            onRestoreRevision={handleRestoreFromDrawer}
+            onSelectRevision={setSelectedRevisionId}
+            peekBlock={peekBlock}
+            peekBlockRevisions={peekBlockRevisions}
+            peekDimensions={peekDimensions}
+            selectedRevision={selectedRevision}
+            selectedRevisionSourceBlock={selectedRevisionSourceBlock}
+          />
         ) : null}
       </AnimatePresence>
     </>

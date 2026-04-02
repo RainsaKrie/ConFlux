@@ -1,62 +1,92 @@
-export const seedFluxBlocks = [
-  {
-    id: 'seed_flux_welcome',
-    title: '欢迎来到 Flux：杀死文件夹',
-    content:
-      'Flux 不把知识塞进层层文件夹，也不要求你先决定它应该归档到哪里。每一条笔记都只是一个可被引用、可被重组、可被串联的知识块。你用领域、体裁、项目这些维度描述它，系统再通过本地推荐、长文切块和关系视图帮你看到结构，而不是先把思考锁进目录。',
-    dimensions: {
-      domain: ['产品哲学'],
-      format: ['欢迎引导'],
-      project: ['Flux'],
-      stage: ['onboarding'],
-      source: ['seed'],
-    },
+﻿function buildBaseSeedBlock(id, title, content, dimensions) {
+  return {
+    id,
+    title,
+    content,
+    dimensions,
     createdAt: '2026-04-02',
     updatedAt: '2026-04-02',
-  },
-  {
-    id: 'seed_flux_guide',
-    title: '如何使用引用节点与更新原文',
-    content:
-      '在写作页输入 @ 可以搜索并插入引用节点，用它把已有笔记拉进当前上下文。右侧抽屉会展示推荐候选，你可以先点“提取核心摘要”快速理解内容，再按“更新原文”把当前段落里的新信息合并回目标笔记。整个过程保持先预览、后确认，避免模型在后台偷偷改写你的知识。',
-    dimensions: {
-      domain: ['操作指南'],
-      format: ['使用说明'],
-      project: ['Flux'],
-      stage: ['onboarding'],
-      source: ['seed'],
-    },
-    createdAt: '2026-04-02',
-    updatedAt: '2026-04-02',
-  },
-  {
-    id: 'seed_flux_local_first',
-    title: 'Local-First 与 BYOK 安全声明',
-    content:
-      'Flux 默认把知识数据存放在你的浏览器 localStorage 中，不会自动上传到平台后端。API Key 也只保存在本地，并由前端直接请求你配置的标准 Chat Completions 接口。你可以使用 OpenAI、DeepSeek、SiliconFlow 或任何兼容端点，但前提始终是你自己掌握密钥与调用目标。',
-    dimensions: {
-      domain: ['系统边界'],
-      format: ['隐私声明'],
-      project: ['Flux'],
-      stage: ['安全说明'],
-      source: ['seed'],
-    },
-    createdAt: '2026-04-02',
-    updatedAt: '2026-04-02',
-  },
-  {
-    id: 'seed_flux_longform',
-    title: '为什么长文会被自动切块',
-    content:
-      '当你一次性贴入很长的会议纪要、财报或研究草稿时，Flux 会先在本地做保守切块，再把这些碎片用统一的 thread 标签串起来。这样知识既不会因为单篇过长而难以检索，也不会在后续的 Feed、Write、Graph 视图里失联。切块优先保证完整性和可回溯性，而不是炫技式的自动总结。',
-    dimensions: {
-      domain: ['操作指南'],
-      format: ['机制说明'],
-      project: ['Flux'],
-      stage: ['onboarding'],
-      source: ['seed'],
-    },
-    createdAt: '2026-04-02',
-    updatedAt: '2026-04-02',
-  },
-]
+  }
+}
+
+export function buildSeedFluxBlocks(language = 'zh') {
+  if (language === 'en') {
+    return [
+      buildBaseSeedBlock(
+        'seed_conflux_welcome',
+        'Welcome to Conflux: Kill the Folders',
+        'Welcome to Conflux. This project explores a different model for organizing knowledge. Instead of forcing everything into a rigid tree of folders, Conflux leans on dimensions such as domain, format, project, and entity, then lets note-level links form a living network. Add a few related notes in the composer above and watch how they begin to connect in the graph.',
+        {
+          domain: ['Philosophy'],
+          format: [],
+          project: ['Conflux'],
+          stage: ['onboarding'],
+          source: ['seed'],
+        },
+      ),
+      buildBaseSeedBlock(
+        'seed_conflux_adaptive_lens',
+        'Adaptive Lens: Contextual Writing',
+        'In a conventional editor, a reference is usually just a static link. Conflux adds a contextual layer on top: when you type @ in the editor and select another note, the model reads the current paragraph together with the full target note, then drafts a short summary that better fits the paragraph you are writing now.',
+        {
+          domain: [],
+          format: ['Operational Guide'],
+          project: [],
+          stage: ['onboarding'],
+          source: ['seed'],
+        },
+      ),
+      buildBaseSeedBlock(
+        'seed_conflux_assimilation',
+        'Bidirectional Updates: Local Detection and Safe Write-back',
+        'When you pause typing, the local entity lexicon quietly scans the current paragraph for high-signal terms. If it detects a confident relation to an earlier note, Conflux surfaces a prompt in the lower-right corner. From there, you can inspect the earlier note and optionally merge the new paragraph back as a revision, with diff review and rollback preserved in the drawer.',
+        {
+          domain: [],
+          format: [],
+          project: ['Conflux'],
+          stage: ['onboarding'],
+          source: ['seed'],
+        },
+      ),
+    ]
+  }
+
+  return [
+    buildBaseSeedBlock(
+      'seed_conflux_welcome',
+      'Welcome to Conflux：探索网状知识流',
+      '欢迎来到 Conflux。本项目尝试探讨一种不同的知识组织方式：如果放弃严格的树状目录，转而依赖“领域、体裁、实体”等多维度标签，辅以文本级别的引用关系，知识块是否能更自然地形成网络？你可以尝试在顶部的输入框记录几条相互关联的笔记，观察它们在图谱中的连接状态。',
+      {
+        domain: ['理念介绍'],
+        format: [],
+        project: ['Conflux'],
+        stage: ['onboarding'],
+        source: ['seed'],
+      },
+    ),
+    buildBaseSeedBlock(
+      'seed_conflux_adaptive_lens',
+      '动态上下文生成：Adaptive Lens 的机制',
+      '在传统编辑器中，引用往往只是插入一个静态链接。Conflux 尝试在此基础上引入上下文感知：当你在正文中输入 @ 并选择另一篇笔记时，底层大模型会读取你当前的写作段落与目标笔记的全文，尝试生成一段符合当前语境的补充摘要，以降低写作时的上下文跳跃感。',
+      {
+        domain: [],
+        format: ['操作指引'],
+        project: [],
+        stage: ['onboarding'],
+        source: ['seed'],
+      },
+    ),
+    buildBaseSeedBlock(
+      'seed_conflux_assimilation',
+      '双向更新：本地嗅探与同化回写',
+      '当你停下打字时，系统的本地正则引擎（Entity Lexicon）会静默扫描当前段落中的高频实体词。若发现历史笔记的高置信度关联，右下角会给出提示。通过该提示，你不仅可以查阅旧笔记，还可以选择将当前的新段落经过 AI 融合后，作为修订版本（Revision）安全地写回旧笔记中，并随时可以在抽屉面板中查看差异或回滚。',
+      {
+        domain: [],
+        format: [],
+        project: ['Conflux'],
+        stage: ['onboarding'],
+        source: ['seed'],
+      },
+    ),
+  ]
+}
