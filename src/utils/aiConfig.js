@@ -1,8 +1,10 @@
-export const DEFAULT_AI_CONFIG = {
-  baseURL: 'https://api.deepseek.com/v1',
-  model: 'deepseek-chat',
-  apiKey: '',
+const ENV_DEFAULT_AI_CONFIG = {
+  baseURL: import.meta.env.VITE_AI_BASE_URL?.trim() || 'https://api.deepseek.com/v1',
+  model: import.meta.env.VITE_AI_MODEL?.trim() || 'deepseek-chat',
+  apiKey: import.meta.env.VITE_AI_API_KEY?.trim() || '',
 }
+
+export const DEFAULT_AI_CONFIG = ENV_DEFAULT_AI_CONFIG
 
 export const AI_CONFIG_STORAGE_KEY = 'flux_ai_config'
 

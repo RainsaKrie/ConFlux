@@ -1,64 +1,144 @@
-﻿# 🌊 Conflux
+中文文档 [README_ZH](./docs/README_ZH.md) [<sup>5</sup>] | English (Current)
 
-An Experimental Agentic Knowledge Flow System (基于本地优先的聚合知识流转实验)
+# 🌱 Conflux: An Experimental Agentic Knowledge Flow
 
-## Philosophy
+基于本地优先的智能知识流转体验
 
-Conflux is built on a simple working hypothesis: knowledge is often easier to navigate as a network than as a rigid tree.
+## Why Conflux?
 
-Instead of folders and nested ownership, the system keeps notes in a flat local data model and lets structure emerge through dimensions, references, and runtime relationships. Large language models are used in a constrained way: they assist with local context generation, selective retagging, and revision-based write-back, but only after local prefiltering and explicit user confirmation.
+Conflux is a pure front-end experiment around a simple question:
+
+If we stop treating knowledge as a tree of folders, and instead rely on orthogonal dimensions, local relationship inference, conservative longform chunking, and model-assisted contextual reduction, can personal knowledge become more fluid without becoming more chaotic?
+
+This repository is not presented as a finished PKM product. It is a student-led engineering exploration into the boundary between local-first knowledge architecture and restrained AI-native interaction.
+
+The current `v1.0.0 Release Candidate` stays intentionally narrow:
+
+- flat `fluxBlocks` instead of folders or nested ownership
+- local-first persistence through Zustand + browser storage
+- model calls only after local prefiltering and explicit user intent
+- revision-aware write-back instead of silent AI mutation
+
+## Architecture Snapshot
+
+The current baseline follows the architecture described in [docs/02-ARCHITECTURE.md](./docs/02-ARCHITECTURE.md):
+
+- `React 19 + Vite 8` for the application shell
+- `Zustand (persist)` for local-first state
+- `TipTap` with custom node views for writing and reference insertion
+- `react-force-graph-2d` for graph projection and semantic zoom
+- a strict funnel of `local prefilter -> user confirmation -> precise model call`
+
+Conflux currently runs as a browser-only system. There is no backend, no hosted relay, and no built-in sync layer in `v1.0`.
+
+## Key Experiments
+
+### Zero-pressure Capture & Auto-Chunking
+
+Oversized input is intercepted locally before it can become an unreadable monolith. The current chunking pipeline performs conservative physical splitting, preserves a shared `threadId`, and injects thread-level metadata so related fragments remain traceable across Feed, Write, and Graph.
+
+### Phantom Weaving
+
+The recommendation layer is intentionally quiet. After `2500ms` of inactivity, Conflux only inspects the active paragraph, then runs a local `Entity Lexicon + Fuse.js` prefilter to surface likely historical context without interrupting the writing flow.
+
+### Crystal Assimilation
+
+Write-back is handled as a revision problem, not a blind append. New text can be merged back into an earlier note through an AI-assisted flow with diff preview, linear revision history, source tracing, and rollback.
+
+### Zen Canvas & Semantic Zoom
+
+The graph view is not a decorative afterthought. It uses `react-force-graph-2d` to support spotlight search, relation framing, and zoom-aware density control, making larger note clusters inspectable without turning the interface into a wall of overlapping labels.
 
 ## Tech Stack
 
 - React 19
 - Vite 8
+- Zustand (Persist)
+- TipTap (Custom Node View)
 - Tailwind CSS 4
-- Zustand
-- TipTap
-- ForceGraph2D
-
-## Key Features
-
-- Bento and List dual views for low-friction capture and review
-- Flat `fluxBlocks` store with multi-dimensional metadata (`domain / format / project / stage / source`)
-- Paragraph-level local entity sniffing powered by `Entity Lexicon + Fuse.js`
-- Adaptive Lens reference nodes with context-aware right-side inspection
-- Assimilation write-back flow with diff preview, revision history, and rollback
-- Longform semantic chunking with shared thread labels for oversized input
-- Graph view with semantic zoom, search spotlight, and relation framing
-- Pure front-end BYOK model configuration with no required backend relay
+- Framer Motion
+- Fuse.js
+- react-force-graph-2d
 
 ## Getting Started
 
+### 1. Clone and install
+
 ```bash
+git clone https://github.com/RainsaKrie/Flux.git
+cd Flux
 npm install
+```
+
+### 2. Configure BYOK
+
+You can configure the model endpoint in either of two ways:
+
+1. Create a local `.env` file based on [.env.example](./.env.example)
+2. Or open the app and fill the BYOK fields from the lower-left `AI Settings` entry
+
+Example environment file:
+
+```env
+VITE_AI_BASE_URL="https://api.deepseek.com/v1"
+VITE_AI_API_KEY=""
+VITE_AI_MODEL="deepseek-chat"
+```
+
+The current runtime expects an OpenAI-compatible Chat Completions endpoint.
+
+### 3. Run the app
+
+```bash
 npm run dev
 ```
 
-Then open the application in the browser.
-
-This project follows a pure front-end BYOK (Bring Your Own Key) architecture:
-
-- all note data is stored in browser `localStorage`
-- the system ships with no default backend
-- users must configure an OpenAI-compatible Chat Completions endpoint from the lower-left AI settings entry in the UI
-- providers such as DeepSeek and other compatible gateways can be used as long as they support the standard request shape
-
-## Development Checks
+### 4. Verification
 
 ```bash
 npm run lint
 npm run build
-```
-
-Regression verification for local recommendation and longform chunking:
-
-```bash
 npm run verify:phantom
 ```
 
-## Status
+## Security Boundary
 
-Current project line: `v1.0 stabilization`.
+Conflux follows a local-first BYOK model:
 
-The architecture is intentionally locked to a local-first React baseline for this phase. The focus is not adding speculative features, but making the current writing, recommendation, revision, and graph pipeline reliable enough for open-source distribution.
+- note data is stored in browser `localStorage`
+- model credentials are stored locally in the browser unless injected through local environment variables at build time
+- the project ships with no default backend and no hosted proxy
+- users should treat this repository as an experimental personal tool, not a hardened enterprise system
+
+No real API keys are included in this repository.
+
+## Roadmap
+
+The current roadmap is intentionally incremental and is derived from the `docs/` baseline:
+
+- `v1.1`: embedded hybrid retrieval and intent fission for mixed-input decomposition
+- `v1.2`: `IndexedDB`-backed local media support and richer longform ergonomics
+- `v1.3`: whiteboard exploration and batch-oriented metadata management
+- `v2.0`: `Tauri` desktop packaging, local `SQLite`, and more durable local-first storage boundaries
+
+See also:
+
+- [docs/01-PRD.md](./docs/01-PRD.md)
+- [docs/02-ARCHITECTURE.md](./docs/02-ARCHITECTURE.md)
+- [docs/04-CHANGELOG.md](./docs/04-CHANGELOG.md)
+
+Community guidance, critique, and architectural feedback are genuinely welcome.
+
+---
+
+## License
+
+MIT [<sup>1</sup>](./LICENSE)
+
+## Security
+
+See [<sup>2</sup>](./SECURITY.md) for details on data handling and BYOK key storage.
+
+## Contributing
+
+See [<sup>3</sup>](./CONTRIBUTING.md) for development setup and PR guidelines.
