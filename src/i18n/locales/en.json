@@ -32,7 +32,7 @@
     "model": "Model",
     "apiKey": "API key",
     "saveAndClose": "Save and close",
-    "missingApiBanner": "AI settings are not configured yet. Auto-tagging and source updates are currently unavailable.",
+    "missingApiBanner": "AI settings are incomplete. Add a base URL, model, and API key to enable auto-tagging and source updates.",
     "openButton": "Open AI Settings"
   },
   "feed": {
@@ -82,7 +82,7 @@
     "retagBusy": "Tagging...",
     "missingDraftForTags": "Start typing first. Once the note exists, you can edit tags.",
     "missingDraftForRetag": "Add some content and wait for the note to be created before re-evaluating tags.",
-    "missingApiKey": "Finish AI settings and add an API key first.",
+    "missingApiKey": "Finish AI settings first. A base URL, model, and API key are all required.",
     "retagTaskRunning": "AI is re-evaluating tags",
     "retagTaskDone": "AI finished re-evaluating tags",
     "retagTaskFailed": "Tagging failed: {{message}}",

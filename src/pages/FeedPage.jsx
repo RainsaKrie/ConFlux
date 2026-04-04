@@ -12,7 +12,7 @@ import {
   tokensToPoolFilters,
 } from '../features/pools/utils'
 import { useFluxStore } from '../store/useFluxStore'
-import { readAiConfig } from '../utils/aiConfig'
+import { isAiConfigReady, readAiConfig } from '../utils/aiConfig'
 import { classifyQuickCapture } from '../utils/ai'
 import { displayDimensionValue, matchesDimensionValue } from '../utils/displayTag'
 import {
@@ -297,7 +297,7 @@ export function FeedPage() {
       resetCaptureComposer()
 
       const aiConfig = readAiConfig()
-      if (aiConfig.apiKey?.trim()) {
+      if (isAiConfigReady(aiConfig)) {
         const aiTags = await classifyQuickCapture(content, aiConfig, language)
 
         updateBlock(blockId, (old) => ({

@@ -62,6 +62,7 @@
 - 首启引导 seed 已按发布要求收敛为 3 篇正式探讨性节点，统一使用 `Conflux` 项目标签并服务开源首次体验
 - 根目录 `README.md` 已重写为面向 GitHub 开源社区的工程化说明文档，当前基线可视为 `v1.0` 开源发布就绪
 - 根目录已补齐 `.env.example`、`LICENSE(MIT)` 与更克制的开源 README，并让默认 AI 配置支持通过 `VITE_AI_BASE_URL / VITE_AI_API_KEY / VITE_AI_MODEL` 注入本地 BYOK 参数
+- 默认 AI 配置已从“预填 DeepSeek 回退值”调整为“空默认 + 示例 placeholder / .env.example”，确保提供商选择权仍完全掌握在用户手里
 - `v1.0.0 Release Candidate`：当前基线已完成品牌、文案、首启引导、数据主权边界与构建验收收口，可作为 GitHub 开源发布候选包
 
 ## 3. 回顾性里程碑

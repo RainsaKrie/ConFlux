@@ -1,4 +1,4 @@
-import { DEFAULT_AI_CONFIG, readAiConfig, resolveChatCompletionsUrl } from './aiConfig'
+import { readAiConfig, resolveChatCompletionsUrl, isAiConfigReady } from './aiConfig'
 import { buildClassificationSystemPrompt, buildClassificationUserPrompt } from '../ai/prompts'
 
 const FALLBACK_CLASSIFICATION = {
@@ -37,11 +37,11 @@ function safeParseClassification(text) {
 
 function ensureAiConfig(config) {
   const resolved = config ?? readAiConfig()
-  if (!resolved?.apiKey?.trim()) throw new Error('Missing API key')
+  if (!isAiConfigReady(resolved)) throw new Error('Incomplete AI config')
 
   return {
-    baseURL: resolved.baseURL || DEFAULT_AI_CONFIG.baseURL,
-    model: resolved.model || DEFAULT_AI_CONFIG.model,
+    baseURL: resolved.baseURL.trim(),
+    model: resolved.model.trim(),
     apiKey: resolved.apiKey.trim(),
   }
 }

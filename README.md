@@ -1,4 +1,4 @@
-中文文档 README_ZH [<sup>1</sup>](./docs/README_ZH.md) | English (Current)
+Chinese [<sup>1</sup>](./docs/README_ZH.md) | English (Current)
 
 # 🌱 Conflux: An Experimental Agentic Knowledge Flow
 
@@ -6,13 +6,13 @@
 [![Version](https://img.shields.io/badge/version-1.0.0-green)](./package.json)
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](https://react.dev/)
 
-基于本地优先的智能知识流转体验
+A local-first experiment in knowledge flow design.
 
 ## Why Conflux?
 
 Conflux is a pure front-end experiment around a simple question:
 
-If we stop treating knowledge as a tree of folders, and instead rely on orthogonal dimensions, local relationship inference, conservative longform chunking, and model-assisted contextual reduction, can personal knowledge become more fluid without becoming more chaotic?
+If we stop treating knowledge as a tree of folders and instead rely on orthogonal dimensions, local relationship inference, conservative longform chunking, and model-assisted contextual reduction, can personal knowledge become more fluid without becoming more chaotic?
 
 This repository is not presented as a finished PKM product. It is a student-led engineering exploration into the boundary between local-first knowledge architecture and restrained AI-native interaction.
 

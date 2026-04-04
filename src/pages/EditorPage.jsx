@@ -21,7 +21,7 @@ import {
 import { useTranslation } from '../i18n/I18nProvider'
 import { useFluxStore } from '../store/useFluxStore'
 import { classifyQuickCapture } from '../utils/ai'
-import { AI_CONFIG_STORAGE_KEY, readAiConfig, resolveChatCompletionsUrl } from '../utils/aiConfig'
+import { AI_CONFIG_STORAGE_KEY, isAiConfigReady, readAiConfig, resolveChatCompletionsUrl } from '../utils/aiConfig'
 import { buildBlockId, contentToPlainText, getTodayStamp, normalizeBlockDimensions } from '../utils/blocks'
 
 const primaryEditableDimensions = ['domain', 'format', 'project']
@@ -292,7 +292,7 @@ export function EditorPage() {
     if (!mergedText.trim()) return
 
     const aiConfig = readAiConfig()
-    if (!aiConfig.apiKey?.trim()) return
+    if (!isAiConfigReady(aiConfig)) return
 
     aiEnrichedIdsRef.current.add(targetId)
     try {
@@ -442,7 +442,7 @@ export function EditorPage() {
       aiConfig = null
     }
 
-    if (!aiConfig?.apiKey?.trim()) {
+    if (!isAiConfigReady(aiConfig)) {
       window.alert(t('editor.missingApiKey'))
       return
     }
@@ -463,7 +463,7 @@ export function EditorPage() {
           Authorization: `Bearer ${aiConfig.apiKey.trim()}`,
         },
         body: JSON.stringify({
-          model: aiConfig.model || 'deepseek-chat',
+          model: aiConfig.model.trim(),
           messages: [
             {
               role: 'system',
@@ -546,7 +546,7 @@ export function EditorPage() {
     }
 
     const aiConfig = readAiConfig()
-    if (!aiConfig.apiKey?.trim()) {
+    if (!isAiConfigReady(aiConfig)) {
       window.alert(t('editor.missingApiKey'))
       return
     }
@@ -571,7 +571,7 @@ export function EditorPage() {
           Authorization: `Bearer ${aiConfig.apiKey.trim()}`,
         },
         body: JSON.stringify({
-          model: aiConfig.model || 'deepseek-chat',
+          model: aiConfig.model.trim(),
           messages: [
             {
               role: 'system',

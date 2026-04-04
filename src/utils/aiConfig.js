@@ -1,6 +1,6 @@
 const ENV_DEFAULT_AI_CONFIG = {
-  baseURL: import.meta.env.VITE_AI_BASE_URL?.trim() || 'https://api.deepseek.com/v1',
-  model: import.meta.env.VITE_AI_MODEL?.trim() || 'deepseek-chat',
+  baseURL: import.meta.env.VITE_AI_BASE_URL?.trim() || '',
+  model: import.meta.env.VITE_AI_MODEL?.trim() || '',
   apiKey: import.meta.env.VITE_AI_API_KEY?.trim() || '',
 }
 
@@ -31,6 +31,14 @@ export function saveAiConfig(config) {
   window.localStorage.setItem(AI_CONFIG_STORAGE_KEY, JSON.stringify(config))
 }
 
+export function isAiConfigReady(config) {
+  return Boolean(config?.baseURL?.trim() && config?.model?.trim() && config?.apiKey?.trim())
+}
+
 export function resolveChatCompletionsUrl(baseURL) {
-  return `${(baseURL || DEFAULT_AI_CONFIG.baseURL).trim().replace(/\/$/, '')}/chat/completions`
+  const resolvedBaseUrl = (baseURL || DEFAULT_AI_CONFIG.baseURL).trim().replace(/\/$/, '')
+  if (!resolvedBaseUrl) {
+    throw new Error('Missing AI base URL')
+  }
+  return `${resolvedBaseUrl}/chat/completions`
 }

@@ -32,7 +32,7 @@
     "model": "模型名称",
     "apiKey": "API 密钥",
     "saveAndClose": "保存并关闭",
-    "missingApiBanner": "系统尚未完成 AI 设置，自动打标与原文更新暂时不可用。",
+    "missingApiBanner": "AI 设置尚未完成。请补全接口地址、模型名称和 API 密钥后，再使用自动打标与原文更新。",
     "openButton": "前往 AI 设置"
   },
   "feed": {
@@ -82,7 +82,7 @@
     "retagBusy": "AI 审视中...",
     "missingDraftForTags": "请先输入标题或正文，系统创建笔记后再管理标签。",
     "missingDraftForRetag": "请先输入内容并等待笔记创建后，再让 AI 重新审视标签。",
-    "missingApiKey": "请先在左侧边栏底部完成 AI 设置并填入 API 密钥。",
+    "missingApiKey": "请先在左侧边栏底部完成 AI 设置，接口地址、模型名称和 API 密钥都需要填写。",
     "retagTaskRunning": "AI 正在重新审视标签",
     "retagTaskDone": "AI 已完成标签重审",
     "retagTaskFailed": "标签重审失败：{{message}}",

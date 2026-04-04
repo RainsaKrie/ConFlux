@@ -7,7 +7,7 @@ import { RecentAiTasksPanel } from '../components/sidebar/RecentAiTasksPanel'
 import { buildPoolContext, buildPoolContextKey, encodePoolFilters, poolFiltersToTokens } from '../features/pools/utils'
 import { useTranslation } from '../i18n/I18nProvider'
 import { useFluxStore } from '../store/useFluxStore'
-import { DEFAULT_AI_CONFIG, readAiConfig, saveAiConfig } from '../utils/aiConfig'
+import { DEFAULT_AI_CONFIG, isAiConfigReady, readAiConfig, saveAiConfig } from '../utils/aiConfig'
 import { displayDimensionValue } from '../utils/displayTag'
 
 const MotionDiv = motion.div
@@ -40,7 +40,7 @@ export function SidebarLayout() {
     [activeFiltersToken, activePoolContext?.key, savedPools],
   )
 
-  const hasApiKey = Boolean(config.apiKey?.trim())
+  const hasAiConfig = isAiConfigReady(config)
   const navItems = useMemo(
     () => [
       { to: '/feed', label: t('nav.feedLabel'), description: t('nav.feedDescription'), icon: Compass },
@@ -244,7 +244,7 @@ export function SidebarLayout() {
           </aside>
 
           <main className="min-w-0 flex-1 px-6 py-6 lg:px-8">
-            {!hasApiKey ? (
+            {!hasAiConfig ? (
               <div className="sticky top-0 z-50 -mx-6 -mt-6 mb-6 border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 lg:-mx-8">
                 <div className="flex items-center justify-between gap-4">
                   <span>{t('settings.missingApiBanner')}</span>
