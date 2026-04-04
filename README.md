@@ -1,4 +1,4 @@
-[中文文档](./docs/README_ZH.md) | English (Current)
+[Chinese README](./docs/README_ZH.md) | English (Current)
 
 # 🌱 Conflux: An Experimental Agentic Knowledge Flow
 
