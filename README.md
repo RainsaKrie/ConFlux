@@ -23,6 +23,15 @@ The current `v1.0.0 Release Candidate` stays intentionally narrow:
 - model calls only after local prefiltering and explicit user intent
 - revision-aware write-back instead of silent AI mutation
 
+## How It Works (30 seconds)
+
+1. **Paste a long article into Quick Capture**  
+   Conflux automatically splits it into smaller, searchable knowledge blocks, each linked by a shared thread label so you can always trace them back to the original source.
+2. **Start writing a new note**  
+   After you pause typing for about 2.5 seconds, the system silently scans your current paragraph against existing notes using a local entity lexicon. If a strong match is found, a small indicator appears in the bottom-right corner. No popups, no interruptions.
+3. **Merge new insights back into an older note**  
+   Click the indicator to open a side-by-side drawer. From there you can ask the AI to merge your new paragraph into the older note. The result is shown as a character-level diff. You review it, confirm or reject it, and the full revision history is kept locally for rollback at any time.
+
 ## Architecture Snapshot
 
 The current baseline follows the architecture described in [docs/02-ARCHITECTURE.md](./docs/02-ARCHITECTURE.md):
@@ -69,8 +78,8 @@ The graph view is not a decorative afterthought. It uses `react-force-graph-2d` 
 ### 1. Clone and install
 
 ```bash
-git clone https://github.com/RainsaKrie/Flux.git
-cd Flux
+git clone https://github.com/RainsaKrie/ConFlux.git
+cd ConFlux
 npm install
 ```
 
@@ -125,13 +134,20 @@ The current roadmap is intentionally incremental and is derived from the `docs/`
 - `v1.3`: whiteboard exploration and batch-oriented metadata management
 - `v2.0`: `Tauri` desktop packaging, local `SQLite`, and more durable local-first storage boundaries
 
-See also:
-
-- [docs/01-PRD.md](./docs/01-PRD.md)
-- [docs/02-ARCHITECTURE.md](./docs/02-ARCHITECTURE.md)
-- [docs/04-CHANGELOG.md](./docs/04-CHANGELOG.md)
-
 Community guidance, critique, and architectural feedback are genuinely welcome.
+
+## Documentation
+
+The `docs/` directory contains the full product and engineering context behind Conflux:
+
+| Document | Description |
+|---|---|
+| [01-PRD.md](./docs/01-PRD.md) | Product requirements, core objects, scenarios, and the complete version roadmap (v1.1 -> v2.0) |
+| [02-ARCHITECTURE.md](./docs/02-ARCHITECTURE.md) | Technical baseline, module structure, data model, and the main processing pipelines |
+| [03-DATABASE.md](./docs/03-DATABASE.md) | Current localStorage schema, entity model, thread conventions, and future migration plan |
+| [04-CHANGELOG.md](./docs/04-CHANGELOG.md) | The single source of truth for version history and milestone tracking |
+| [05-MASTER-DIRECTIVE.md](./docs/05-MASTER-DIRECTIVE.md) | Core product discipline: local-first funnel, zero-pressure UI, and bi-directional growth |
+| [06-HANDOFF.md](./docs/06-HANDOFF.md) | Developer handoff guide for resuming work in any future session |
 
 ---
 
