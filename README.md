@@ -1,6 +1,10 @@
-中文文档 [README_ZH](./docs/README_ZH.md) [<sup>5</sup>] | English (Current)
+中文文档 README_ZH [<sup>1</sup>](./docs/README_ZH.md) | English (Current)
 
 # 🌱 Conflux: An Experimental Agentic Knowledge Flow
+
+[![License](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
+[![Version](https://img.shields.io/badge/version-1.0.0-green)](./package.json)
+[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)](https://react.dev/)
 
 基于本地优先的智能知识流转体验
 
@@ -133,12 +137,12 @@ Community guidance, critique, and architectural feedback are genuinely welcome.
 
 ## License
 
-MIT [<sup>1</sup>](./LICENSE)
+MIT License [<sup>2</sup>](./LICENSE)
 
 ## Security
 
-See [<sup>2</sup>](./SECURITY.md) for details on data handling and BYOK key storage.
+Security Policy [<sup>3</sup>](./SECURITY.md)
 
 ## Contributing
 
-See [<sup>3</sup>](./CONTRIBUTING.md) for development setup and PR guidelines.
+Contributing Guide [<sup>4</sup>](./CONTRIBUTING.md)
