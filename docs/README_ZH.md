@@ -1,4 +1,4 @@
-English README [<sup>1</sup>](../README.md) | 中文（当前）
+[English](../README.md) | 中文（当前）
 
 # 🌱 Conflux：一个实验性的 Agentic Knowledge Flow 项目
 
@@ -33,8 +33,8 @@ Conflux 的数据核心是扁平的 `fluxBlocks`，通过 `domain / format / pro
 ## 技术栈
 
 - React 19
-- Vite
-- Tailwind CSS
+- Vite 8
+- Tailwind CSS 4
 - Zustand
 - TipTap
 - react-force-graph-2d
@@ -93,12 +93,12 @@ API Key 只会用于前端直连你自己配置的大模型接口，不会被转
 
 ## 许可证
 
-MIT [<sup>2</sup>](../LICENSE)
+[MIT License](../LICENSE)
 
 ## 安全声明
 
-[<sup>3</sup>](../SECURITY.md)
+[查看安全策略](../SECURITY.md)
 
 ## 贡献指南
 
-[<sup>4</sup>](../CONTRIBUTING.md)
+[查看贡献指南](../CONTRIBUTING.md)

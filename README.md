@@ -1,4 +1,4 @@
-Chinese [<sup>1</sup>](./docs/README_ZH.md) | English (Current)
+[中文文档](./docs/README_ZH.md) | English (Current)
 
 # 🌱 Conflux: An Experimental Agentic Knowledge Flow
 
@@ -137,12 +137,12 @@ Community guidance, critique, and architectural feedback are genuinely welcome.
 
 ## License
 
-MIT License [<sup>2</sup>](./LICENSE)
+[MIT License](./LICENSE)
 
 ## Security
 
-Security Policy [<sup>3</sup>](./SECURITY.md)
+[Security Policy](./SECURITY.md)
 
 ## Contributing
 
-Contributing Guide [<sup>4</sup>](./CONTRIBUTING.md)
+[Contributing Guide](./CONTRIBUTING.md)
