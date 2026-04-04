@@ -22,7 +22,14 @@ import { useTranslation } from '../i18n/I18nProvider'
 import { useFluxStore } from '../store/useFluxStore'
 import { classifyQuickCapture } from '../utils/ai'
 import { AI_CONFIG_STORAGE_KEY, isAiConfigReady, readAiConfig, resolveChatCompletionsUrl } from '../utils/aiConfig'
-import { buildBlockId, contentToPlainText, getTodayStamp, normalizeBlockDimensions } from '../utils/blocks'
+import {
+  BLOCK_DIMENSION_DEFAULTS,
+  buildBlockId,
+  contentToPlainText,
+  getTodayStamp,
+  normalizeBlockDimensions,
+  withBlockDimensionFallbacks,
+} from '../utils/blocks'
 
 const primaryEditableDimensions = ['domain', 'format', 'project']
 const secondaryEditableDimensions = ['stage', 'source']
@@ -34,8 +41,8 @@ const dimensionLabelKeys = {
   source: 'editor.tagDimension.source',
 }
 const dimensionFallbackValues = {
-  domain: '未分类',
-  format: '碎片',
+  domain: BLOCK_DIMENSION_DEFAULTS.domain,
+  format: BLOCK_DIMENSION_DEFAULTS.format,
   project: null,
   stage: null,
   source: null,
@@ -72,18 +79,25 @@ function extractJsonObject(text = '') {
 function safeParseClassification(text = '') {
   try {
     const parsed = JSON.parse(extractJsonObject(text))
+    const dimensions = withBlockDimensionFallbacks({
+      domain: Array.isArray(parsed?.domain) ? parsed.domain : [],
+      format: Array.isArray(parsed?.format) ? parsed.format : [],
+      project: Array.isArray(parsed?.project) ? parsed.project : [],
+    })
+
     return {
       title: typeof parsed?.title === 'string' ? parsed.title.trim() : '',
-      domain: Array.isArray(parsed?.domain) ? parsed.domain : ['未分类'],
-      format: Array.isArray(parsed?.format) ? parsed.format : ['碎片'],
-      project: Array.isArray(parsed?.project) ? parsed.project : [],
+      domain: dimensions.domain,
+      format: dimensions.format,
+      project: dimensions.project,
     }
   } catch {
+    const dimensions = withBlockDimensionFallbacks()
     return {
       title: '',
-      domain: ['未分类'],
-      format: ['碎片'],
-      project: [],
+      domain: dimensions.domain,
+      format: dimensions.format,
+      project: dimensions.project,
     }
   }
 }
@@ -307,13 +321,13 @@ export function EditorPage() {
         title: shouldReplaceWithAiTitle(old.title, old.content, aiTags.title)
           ? aiTags.title.trim()
           : old.title,
-        dimensions: {
-          ...old.dimensions,
+        dimensions: withBlockDimensionFallbacks({
+          ...normalizeBlockDimensions(old.dimensions),
           ...normalized,
-          domain: aiTags.domain?.length ? aiTags.domain : ['未分类'],
-          format: aiTags.format?.length ? aiTags.format : ['碎片'],
+          domain: aiTags.domain,
+          format: aiTags.format,
           project: aiTags.project || [],
-        },
+        }),
         updatedAt: getTodayStamp(),
       }))
     } finally {
@@ -348,9 +362,7 @@ export function EditorPage() {
       id: newId,
       title: nextTitle,
       content: nextContent,
-      dimensions: normalizeBlockDimensions({
-        domain: ['未分类'],
-        format: ['碎片'],
+      dimensions: withBlockDimensionFallbacks({
         project: [],
       }),
       createdAt: timestamp,
@@ -486,12 +498,12 @@ export function EditorPage() {
       const aiTags = safeParseClassification(rawText)
 
       updateBlock(activeBlockId, (old) => ({
-        dimensions: {
+        dimensions: withBlockDimensionFallbacks({
           ...normalizeBlockDimensions(old.dimensions),
-          domain: aiTags.domain?.length ? aiTags.domain : ['未分类'],
-          format: aiTags.format?.length ? aiTags.format : ['碎片'],
+          domain: aiTags.domain,
+          format: aiTags.format,
           project: aiTags.project || [],
-        },
+        }),
         updatedAt: getTodayStamp(),
       }))
       updateAiTask(taskId, {

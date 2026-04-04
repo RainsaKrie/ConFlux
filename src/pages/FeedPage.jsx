@@ -16,10 +16,12 @@ import { isAiConfigReady, readAiConfig } from '../utils/aiConfig'
 import { classifyQuickCapture } from '../utils/ai'
 import { displayDimensionValue, matchesDimensionValue } from '../utils/displayTag'
 import {
+  BLOCK_DIMENSION_DEFAULTS,
+  BLOCK_SOURCE_LABELS,
   buildBlockId,
   contentToPlainText,
   getTodayStamp,
-  normalizeBlockDimensions,
+  withBlockDimensionFallbacks,
 } from '../utils/blocks'
 import {
   buildSemanticChunkTitle,
@@ -101,20 +103,14 @@ function mergeWithFallback(baseValues = [], nextValues = [], fallbackValue = '')
 }
 
 function buildCaptureDimensions(filters = {}, overrides = {}) {
-  const normalized = normalizeBlockDimensions({
+  return withBlockDimensionFallbacks({
     domain: filters.domain ?? [],
     format: filters.format ?? [],
     project: filters.project ?? [],
     stage: filters.stage ?? [],
-    source: ['速记'],
+    source: [BLOCK_SOURCE_LABELS.quickCapture],
     ...overrides,
   })
-
-  return {
-    ...normalized,
-    domain: normalized.domain.length ? normalized.domain : ['未分类'],
-    format: normalized.format.length ? normalized.format : ['碎片'],
-  }
 }
 
 export function FeedPage() {
@@ -305,13 +301,13 @@ export function FeedPage() {
           dimensions: {
             ...old.dimensions,
             domain: aiTags.domain?.length
-              ? mergeWithFallback(baseDimensions.domain, aiTags.domain, '未分类')
+              ? mergeWithFallback(baseDimensions.domain, aiTags.domain, BLOCK_DIMENSION_DEFAULTS.domain)
               : old.dimensions.domain,
             format: aiTags.format?.length
-              ? mergeWithFallback(baseDimensions.format, aiTags.format, '碎片')
+              ? mergeWithFallback(baseDimensions.format, aiTags.format, BLOCK_DIMENSION_DEFAULTS.format)
               : old.dimensions.format,
             project: mergeValues(baseDimensions.project, aiTags.project || []),
-            source: mergeValues(old.dimensions.source, ['AI 生成']),
+            source: mergeValues(old.dimensions.source, [BLOCK_SOURCE_LABELS.aiGenerated]),
           },
         }))
       } else {

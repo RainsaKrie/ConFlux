@@ -6,7 +6,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/RainsaKrie/Flux.git"
+    "url": "https://github.com/RainsaKrie/ConFlux.git"
   },
   "type": "module",
   "scripts": {

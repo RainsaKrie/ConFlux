@@ -161,6 +161,16 @@ export function getTodayStamp() {
   return new Date().toISOString().slice(0, 10)
 }
 
+export const BLOCK_DIMENSION_DEFAULTS = Object.freeze({
+  domain: '未分类',
+  format: '碎片',
+})
+
+export const BLOCK_SOURCE_LABELS = Object.freeze({
+  aiGenerated: 'AI 生成',
+  quickCapture: '速记',
+})
+
 export function normalizeBlockDimensions(dimensions = {}) {
   return {
     domain: Array.isArray(dimensions.domain) ? dimensions.domain : [],
@@ -168,6 +178,16 @@ export function normalizeBlockDimensions(dimensions = {}) {
     project: Array.isArray(dimensions.project) ? dimensions.project : [],
     stage: Array.isArray(dimensions.stage) ? dimensions.stage : [],
     source: Array.isArray(dimensions.source) ? dimensions.source : [],
+  }
+}
+
+export function withBlockDimensionFallbacks(dimensions = {}) {
+  const normalized = normalizeBlockDimensions(dimensions)
+
+  return {
+    ...normalized,
+    domain: normalized.domain.length ? normalized.domain : [BLOCK_DIMENSION_DEFAULTS.domain],
+    format: normalized.format.length ? normalized.format : [BLOCK_DIMENSION_DEFAULTS.format],
   }
 }
 
