@@ -23,14 +23,14 @@ The current `v1.0.0 Release Candidate` stays intentionally narrow:
 - model calls only after local prefiltering and explicit user intent
 - revision-aware write-back instead of silent AI mutation
 
-## How It Works (30 seconds)
+## How It Works (30 Seconds)
 
 1. **Paste a long article into Quick Capture**  
    Conflux automatically splits it into smaller, searchable knowledge blocks, each linked by a shared thread label so you can always trace them back to the original source.
 2. **Start writing a new note**  
-   After you pause typing for about 2.5 seconds, the system silently scans your current paragraph against existing notes using a local entity lexicon. If a strong match is found, a small indicator appears in the bottom-right corner. No popups, no interruptions.
+   After you pause typing for roughly 2.5 seconds, the system silently scans your current paragraph against existing notes using a local entity lexicon. If a strong match is found, a small indicator appears in the bottom-right corner. No popups, no interruptions.
 3. **Merge new insights back into an older note**  
-   Click the indicator to open a side-by-side drawer. From there you can ask the AI to merge your new paragraph into the older note. The result is shown as a character-level diff. You review it, confirm or reject it, and the full revision history is kept locally for rollback at any time.
+   Click the indicator to open a side-by-side drawer. From there you can ask the AI to merge your new paragraph into the older note. The result is shown as a character-level diff, and the full revision history is kept locally so you can confirm, reject, or roll back at any time.
 
 ## Architecture Snapshot
 
