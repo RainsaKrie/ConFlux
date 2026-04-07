@@ -1,5 +1,14 @@
 import { contentToPlainText } from '../../utils/blocks'
 
+function escapeHtml(value = '') {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 function splitIntoSegments(text = '') {
   const normalized = text.replace(/\s+/g, ' ').trim()
   if (!normalized) return []
@@ -174,6 +183,57 @@ function buildInlineDiff(beforeText = '', afterText = '') {
   }
 }
 
+function buildMergedInlineDiff(beforeText = '', afterText = '') {
+  const beforeTokens = tokenizeText(beforeText)
+  const afterTokens = tokenizeText(afterText)
+
+  if (!beforeTokens.length && !afterTokens.length) return []
+
+  if (beforeTokens.length * afterTokens.length > 6400) {
+    return [
+      ...(beforeText ? [{ type: 'remove', value: beforeText }] : []),
+      ...(afterText ? [{ type: 'add', value: afterText }] : []),
+    ]
+  }
+
+  const matrix = buildLcsMatrix(beforeTokens, afterTokens)
+  const operations = []
+  const parts = []
+  let beforeIndex = beforeTokens.length
+  let afterIndex = afterTokens.length
+
+  while (beforeIndex > 0 || afterIndex > 0) {
+    if (
+      beforeIndex > 0 &&
+      afterIndex > 0 &&
+      beforeTokens[beforeIndex - 1] === afterTokens[afterIndex - 1]
+    ) {
+      operations.unshift({ type: 'equal', value: beforeTokens[beforeIndex - 1] })
+      beforeIndex -= 1
+      afterIndex -= 1
+      continue
+    }
+
+    if (
+      afterIndex > 0 &&
+      (beforeIndex === 0 || matrix[beforeIndex][afterIndex - 1] >= matrix[beforeIndex - 1][afterIndex])
+    ) {
+      operations.unshift({ type: 'add', value: afterTokens[afterIndex - 1] })
+      afterIndex -= 1
+      continue
+    }
+
+    operations.unshift({ type: 'remove', value: beforeTokens[beforeIndex - 1] })
+    beforeIndex -= 1
+  }
+
+  operations.forEach((operation) => {
+    appendPart(parts, operation.type, operation.value)
+  })
+
+  return parts
+}
+
 function buildRows(beforeSegments = [], afterSegments = []) {
   const operations = buildSegmentOperations(beforeSegments, afterSegments)
   const rows = []
@@ -266,4 +326,25 @@ export function buildAssimilationDiff(beforeContent = '', afterContent = '') {
     rows,
     stats,
   }
+}
+
+export function buildAssimilationInlineDiffHtml(beforeContent = '', afterContent = '') {
+  const beforeText = contentToPlainText(beforeContent).replace(/\s+/g, ' ').trim()
+  const afterText = contentToPlainText(afterContent).replace(/\s+/g, ' ').trim()
+  const parts = buildMergedInlineDiff(beforeText, afterText)
+
+  if (!parts.length) return ''
+
+  return parts
+    .map((part) => {
+      const value = escapeHtml(part.value)
+      if (part.type === 'remove') {
+        return `<del class="bg-rose-100/60 text-rose-800 line-through decoration-rose-500/80">${value}</del>`
+      }
+      if (part.type === 'add') {
+        return `<ins class="bg-emerald-100/60 text-emerald-800 no-underline">${value}</ins>`
+      }
+      return `<span class="text-zinc-700">${value}</span>`
+    })
+    .join('')
 }

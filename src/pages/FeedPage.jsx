@@ -13,7 +13,7 @@ import {
 } from '../features/pools/utils'
 import { useFluxStore } from '../store/useFluxStore'
 import { isAiConfigReady, readAiConfig } from '../utils/aiConfig'
-import { classifyQuickCapture } from '../utils/ai'
+import { classifyQuickCapture, segmentQuickCaptureIntent } from '../utils/ai'
 import { displayDimensionValue, matchesDimensionValue } from '../utils/displayTag'
 import {
   BLOCK_DIMENSION_DEFAULTS,
@@ -102,6 +102,13 @@ function mergeWithFallback(baseValues = [], nextValues = [], fallbackValue = '')
   return mergeValues(baseValues.filter((value) => value !== fallbackValue), nextValues)
 }
 
+async function processInBatches(items, batchSize, handler) {
+  for (let index = 0; index < items.length; index += batchSize) {
+    const batch = items.slice(index, index + batchSize)
+    await Promise.all(batch.map(handler))
+  }
+}
+
 function buildCaptureDimensions(filters = {}, overrides = {}) {
   return withBlockDimensionFallbacks({
     domain: filters.domain ?? [],
@@ -133,7 +140,6 @@ export function FeedPage() {
     parseFiltersParam(searchParams.get('filters')),
   )
   const fluxBlocks = useFluxStore((state) => state.fluxBlocks)
-  const addBlock = useFluxStore((state) => state.addBlock)
   const addBlocks = useFluxStore((state) => state.addBlocks)
   const deleteBlock = useFluxStore((state) => state.deleteBlock)
   const addPool = useFluxStore((state) => state.addPool)
@@ -248,6 +254,7 @@ export function FeedPage() {
     try {
       const baseDimensions = buildCaptureDimensions(activeFilters)
       const timestamp = getTodayStamp()
+      const aiConfig = readAiConfig()
 
       if (content.length > LONGFORM_CAPTURE_THRESHOLD) {
         const chunks = splitIntoSemanticChunks(content)
@@ -278,40 +285,54 @@ export function FeedPage() {
         return
       }
 
-      const blockId = buildBlockId()
-      const firstLine = content.split('\n')[0].trim()
+      const segments = isAiConfigReady(aiConfig)
+        ? await segmentQuickCaptureIntent(content, aiConfig)
+        : [content]
 
-      addBlock({
-        id: blockId,
-        title: firstLine.length > 15 ? `${firstLine.slice(0, 15)}...` : firstLine,
-        content,
-        dimensions: baseDimensions,
-        createdAt: timestamp,
-        updatedAt: timestamp,
+      const pendingBlocks = segments.map((segment) => {
+        const firstLine = segment.split('\n')[0].trim()
+        const id = buildBlockId()
+
+        return {
+          id,
+          segment,
+          fallbackBlock: {
+            id,
+            title: firstLine.length > 15 ? `${firstLine.slice(0, 15)}...` : firstLine,
+            content: segment,
+            dimensions: baseDimensions,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+          },
+        }
       })
+
+      addBlocks(pendingBlocks.map((item) => item.fallbackBlock))
 
       resetCaptureComposer()
 
-      const aiConfig = readAiConfig()
-      if (isAiConfigReady(aiConfig)) {
-        const aiTags = await classifyQuickCapture(content, aiConfig, language)
-
-        updateBlock(blockId, (old) => ({
-          title: aiTags.title && aiTags.title.length > 0 ? aiTags.title : old.title,
-          dimensions: {
-            ...old.dimensions,
-            domain: aiTags.domain?.length
-              ? mergeWithFallback(baseDimensions.domain, aiTags.domain, BLOCK_DIMENSION_DEFAULTS.domain)
-              : old.dimensions.domain,
-            format: aiTags.format?.length
-              ? mergeWithFallback(baseDimensions.format, aiTags.format, BLOCK_DIMENSION_DEFAULTS.format)
-              : old.dimensions.format,
-            project: mergeValues(baseDimensions.project, aiTags.project || []),
-            source: mergeValues(old.dimensions.source, [BLOCK_SOURCE_LABELS.aiGenerated]),
-          },
-        }))
-      } else {
+      if (!isAiConfigReady(aiConfig)) {
         showCaptureWarning(t('feed.offlineSaved'))
+      } else {
+        setCaptureWarning('')
+        void processInBatches(pendingBlocks, 2, async ({ id, segment }) => {
+          const aiTags = await classifyQuickCapture(segment, aiConfig, language)
+
+          updateBlock(id, (old) => ({
+            title: aiTags.title && aiTags.title.length > 0 ? aiTags.title : old.title,
+            dimensions: {
+              ...old.dimensions,
+              domain: aiTags.domain?.length
+                ? mergeWithFallback(baseDimensions.domain, aiTags.domain, BLOCK_DIMENSION_DEFAULTS.domain)
+                : old.dimensions.domain,
+              format: aiTags.format?.length
+                ? mergeWithFallback(baseDimensions.format, aiTags.format, BLOCK_DIMENSION_DEFAULTS.format)
+                : old.dimensions.format,
+              project: mergeValues(baseDimensions.project, aiTags.project || []),
+              source: mergeValues(old.dimensions.source, [BLOCK_SOURCE_LABELS.aiGenerated]),
+            },
+          }))
+        })
       }
     } finally {
       setIsSubmitting(false)

@@ -32,6 +32,7 @@
 - 长文切块会生成共享 `threadId`，并通过 `project / source` 线程标签把同批碎片串联起来。
 - 当前 `Phantom Weaving` 只在当前段落上运行：`2500ms debounce + Entity Lexicon + Fuse.js` 本地预筛。
 - 命中后只在右下角浮出“发现相关节点”的微型提示；点击后打开右侧 `Peek Drawer`。
+- `Phantom Weaving` 最近已完成一轮故障修复：进入 Fuse 验证前的候选门槛已从 `matchedTerms >= 2` 调整为 `>= 1`，单实体高置信命中不再被提前丢弃，浏览器实测右下角提示已恢复正常。
 - Drawer 顶部可执行：`提取核心摘要`、`更新原文`。
 - `/write` 的手动元数据分配已经进入可用态：主区完整暴露 `domain / format / project`，并以低存在感次级元数据条补充 `stage / source`。
 - `/feed` 已可把 `stage / source` 纳入筛选建议与 Token 过滤；`/graph` 已可低存在感展示阶段与来源元数据。
@@ -51,6 +52,12 @@
 
 - `Hybrid Retrieval` 向量混合召回
 - `Intent Fission` 微观主题拆解
+
+当前进度：
+
+- `v1.1 Phase 1` 已进入实现态：Quick Capture 在常规输入链路中，已先加入基于大模型的主题分离步骤；当用户一次性输入多个无关碎片时，系统会先拆成多个片段，再按顺序逐片段完成 AI 打标与入库
+- `v1.1 Phase 1` 已完成第一轮性能优化：主题分离返回片段后，系统会先以兜底维度批量落盘，让卡片立即出现在 Feed；随后再以最大并发 `2` 在后台补做 AI 打标，单片段失败不会阻断其他片段
+- `v1.1 Phase 2` 已完成第一层 Wasm 向量化基建：项目已接入 `@xenova/transformers`，新增 `src/features/search/embedder.js` 单例 Embedder 与余弦相似度函数，并通过 `scripts/test-embedder.mjs` 成功跑通 `"你好世界"` 的本地 embedding 推理
 
 ### `v1.2`
 

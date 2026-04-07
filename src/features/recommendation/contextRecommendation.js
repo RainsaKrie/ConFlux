@@ -2,7 +2,7 @@
 import { getPoolMatchScore } from '../pools/utils.js'
 
 const MIN_PARAGRAPH_LENGTH = 8
-const MIN_MATCHED_TERMS = 2
+const MIN_MATCHED_TERMS = 1
 const MAX_FUSE_SCORE = 0.18
 const STOP_WORDS = new Set([
   'ai',

@@ -9,7 +9,7 @@ import {
   buildClassificationSystemPrompt,
   buildRetagUserPrompt,
 } from '../ai/prompts'
-import { AssimilationPreviewModal } from '../components/assimilation/AssimilationPreviewModal'
+import { AssimilationInlinePreviewModal } from '../components/assimilation/AssimilationInlinePreviewModal'
 import { EditorToolbar, FluxEditor } from '../components/editor/FluxEditor'
 import { PeekDrawer } from '../components/editor/PeekDrawer'
 import {
@@ -1029,7 +1029,7 @@ export function EditorPage() {
 
       <AnimatePresence>
         {assimilationPreview ? (
-          <AssimilationPreviewModal
+          <AssimilationInlinePreviewModal
             preview={assimilationPreview}
             onApply={handleApplyAssimilation}
             onCancel={handleCancelAssimilationPreview}

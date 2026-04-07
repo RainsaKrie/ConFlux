@@ -58,6 +58,7 @@
 - 让 `未命名笔记`、长文 thread 标签、`来源:` / `知识碎块:` 等自动生成元数据随当前语言输出，并在显示层继续支持中英互译
 - 将 onboarding seed 收束为“仅在首次冷启动且本地缺失 `fluxBlocks` 持久化结构时按当前界面语言分发”的安全模型：英文环境挂载英文引导，中文环境挂载中文引导；一旦落盘即视为普通用户数据，后续切换语言不再触发任何批量重算
 - 修正 Zustand 持久化中的冷启动判定：onboarding seed 与默认 `savedPools` 现在只会在本地缺失对应持久化结构时注入，不再把“用户主动删空数据”误判为需要自动补回样板
+- 修复 `Phantom Weaving` 候选门槛过严导致的静默失效：将 `contextRecommendation` 中进入 Fuse 验证前的门槛从 `matchedTerms >= 2` 下调为 `>= 1`，恢复单实体高置信命中的右下角推荐提示
 - 对外品牌名正式锁定为 `Conflux`，并已同步到 UI 文案、`docs/`、`README.md`、`index.html` 与 `package.json`
 - 首启引导 seed 已按发布要求收敛为 3 篇正式探讨性节点，统一使用 `Conflux` 项目标签并服务开源首次体验
 - 根目录 `README.md` 已重写为面向 GitHub 开源社区的工程化说明文档，当前基线可视为 `v1.0` 开源发布就绪
@@ -184,9 +185,12 @@
 - `混合召回引擎 (Hybrid Search)`
   - 引入本地或极轻量级 Embedding 检索，辅助 `Entity Lexicon`
   - 让 `Phantom Weaving` 具备同义词、近义词理解能力
+  - `Phase 2` 基建已进入实现态：已引入 `@xenova/transformers`，完成纯前端 `Xenova/all-MiniLM-L6-v2` 单例 Embedder、余弦相似度工具与本地验证脚本，`"你好世界"` 向量推理已成功输出 `384` 维 embedding，当前未遇到 Vite 构建层面的 Transformers.js 配置报错
 - `意图裂变器 (Intent Fission)`
   - 在 Quick Capture 阶段拦截混杂长文本
   - 通过大模型把输入拆成多个具备独立标签的原子知识块
+  - `Phase 1` 已进入实现态：Quick Capture 在常规短输入提交时，会先通过独立的主题分离请求判断是否存在多个无关意图；若命中多个主题，则按片段顺序逐一执行 AI 打标与入库，避免混合语义污染单个 Block
+  - 已补上第一轮性能优化：主题分离后改为“先以兜底标签批量落盘，再以最大并发 `2` 在后台补做 AI 打标”，显著降低多片段输入时的体感等待
 
 ### `v1.2` 创作体验期
 

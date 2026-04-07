@@ -16,6 +16,25 @@ export function buildClassificationUserPrompt(content, language = 'zh') {
     : `请为这段知识闪念打标：\n${content}`
 }
 
+export function buildIntentFissionSystemPrompt() {
+  return `你是一个文本结构分析器。用户将给你一段可能包含多个无关主题的混合文本。
+
+你的任务：
+
+如果这段文本在语义上是连贯的（讨论同一个主题），直接返回包含一个元素的 JSON 数组。
+如果这段文本包含 2 个或以上明显不相关的独立主题、任务或想法，将其拆分为多个独立片段。
+输出格式必须是合法的 JSON 数组，每个元素是一个字符串（对应一个独立的文本片段）。
+除 JSON 数组外不要输出任何其他内容。
+
+示例输入："买牛奶。React 19 并发机制值得研究。明天和 A 讨论方案。"
+示例输出：["买牛奶", "React 19 并发机制值得研究", "明天和 A 讨论方案"]
+
+示例输入："我觉得分布式系统的核心挑战在于一致性和分区容错之间的权衡，这也是 CAP 定理的本质。"
+示例输出：["我觉得分布式系统的核心挑战在于一致性和分区容错之间的权衡，这也是 CAP 定理的本质。"]
+
+<TEXT>`
+}
+
 export function buildRetagUserPrompt(content, language = 'zh') {
   return isEnglish(language)
     ? `Re-evaluate and tag this knowledge note:\n${content}`
@@ -24,10 +43,10 @@ export function buildRetagUserPrompt(content, language = 'zh') {
 
 export function buildAssimilationSystemPrompt(language = 'zh') {
   if (isEnglish(language)) {
-    return 'You are a careful knowledge editor. Read the source note and the new insight from the current note. Your task is not to append blindly. Instead, merge the new insight into the source note in the most natural place, adding a minimal heading only when needed. Preserve the original note structure and its core information. Do not explain your reasoning. Return only the updated body. If the source note is HTML, return valid HTML. If it is plain text, return content that can be rendered directly. Please output your response in English.'
+    return 'You are a careful knowledge editor. Read the source note and the new insight from the current note. Your task is not to append blindly. Instead, merge the new insight into the source note in the most natural place, adding a minimal heading only when needed. Preserve the original note structure and its core information. Do not explain your reasoning. Return only the merged note body itself. 【绝对红线】：你必须直接输出合并后的笔记正文主体。严禁输出任何类似 \'【更新后的正文】\'、\'以下是更新内容\'、\'总结完毕\' 的前缀、开头语或自我解释。你的输出将直接作为前端 DOM 被渲染，包含任何多余字符将导致系统崩溃！只输出 Markdown 原文！ If the source note is HTML, return only the merged body content with no wrapper labels or commentary. If it is plain text or markdown, return only the merged markdown body. Please output your response in English.'
   }
 
-  return '你是一位严谨的知识库架构师。请阅读【原始笔记正文】，再分析【用户新笔记】里的新增洞察。你的任务不是简单追加，而是把这些新增知识自然整合进原始笔记正文的合适位置，必要时可补一个极简小标题。必须保留原有内容的核心信息和整体结构，不要写解释说明，不要输出分析过程。最终只返回更新后的正文内容本身。如果原文是 HTML 片段，就返回合法 HTML 片段；如果原文是普通文本，也返回适合直接渲染的正文内容。请使用简体中文输出。'
+  return '你是一位严谨的知识库架构师。请阅读【原始笔记正文】，再分析【用户新笔记】里的新增洞察。你的任务不是简单追加，而是把这些新增知识自然整合进原始笔记正文的合适位置，必要时可补一个极简小标题。必须保留原有内容的核心信息和整体结构，不要写解释说明，不要输出分析过程。最终只返回更新后的正文内容本身。【绝对红线】：你必须直接输出合并后的笔记正文主体。严禁输出任何类似 \'【更新后的正文】\'、\'以下是更新内容\'、\'总结完毕\' 的前缀、开头语或自我解释。你的输出将直接作为前端 DOM 被渲染，包含任何多余字符将导致系统崩溃！只输出 Markdown 原文！如果原文是 HTML 片段，就只返回合并后的正文片段本身，不要包裹任何说明性文字；如果原文是普通文本或 Markdown，也只返回合并后的 Markdown 正文。请使用简体中文输出。'
 }
 
 export function buildAssimilationUserPrompt(

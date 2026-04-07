@@ -76,6 +76,7 @@ Conflux 当前是一套纯前端 React MVP，技术栈为：
 - `src/components/sidebar/`：侧边栏轻量管理组件
 - `src/components/editor/`：TipTap 编辑器与 `Adaptive Lens` 扩展
 - `src/features/recommendation/`：段落级本地推荐引擎
+- `src/features/search/embedder.js`：浏览器侧 Wasm Embedding 单例与余弦相似度工具
 - `src/features/metadata/`：补充元数据概览与轻量统计
 - `src/features/graph/`：图谱渲染、搜索、相机控制与常量
 - `src/features/pools/`：Pool 上下文与筛选工具
@@ -153,6 +154,15 @@ type FluxBlock = {
 6. 批量调用 `addBlocks()` 落盘
 7. 默认跳过逐块 AI 打标，避免并发洪峰
 
+对于未超过长文阈值的常规 Quick Capture，`v1.1 Phase 1` 已补上一条前置链路：
+
+1. 用户提交普通长度输入
+2. 若本地 `BYOK` 已就绪，则先调用一次 `Intent Fission` 主题分离请求
+3. 模型返回单片段时沿用原单 Block 提交流程；返回多片段时，将输入物理拆成多个原子片段
+4. 各片段先以兜底维度批量 `addBlocks()` 落盘，让结果立即出现在 Feed 中
+5. 若本地 `BYOK` 已就绪，则再以最大并发 `2` 在后台补做标题生成与维度打标；单片段失败时保留兜底维度，不阻断其他片段
+6. 若未配置 API Key，则直接跳过主题分离后的 AI 打标阶段，按现有兜底维度写入并保留单一或多片段结果，保证输入永不被阻断
+
 ### 6.2 Phantom Weaving
 
 当前链路：
@@ -184,6 +194,13 @@ type FluxBlock = {
 
 - `Hybrid Search`：把段落推荐从单纯 `Fuse.js` 升级为“词典 + Embedding”混合召回
 - `Intent Fission`：把 Quick Capture 从物理切块升级为带主题分离的智能拆解
+
+其中 `Hybrid Search` 的当前基建状态为：
+
+- 已引入 `@xenova/transformers`
+- 已以 `Xenova/all-MiniLM-L6-v2` 封装本地单例 Embedder，保持纯前端、本地优先、无明文后端外发
+- 已补上余弦相似度工具，作为后续向量召回排序的数学底座
+- 已通过独立脚本验证模型下载、缓存与本地推理可用，当前未出现 Vite 对 Transformers.js 的构建配置报错
 
 ### 7.2 `v1.2` 架构任务
 
