@@ -30,7 +30,7 @@
 - `/graph` 的工程化拆分已经完成，核心逻辑位于 `src/features/graph/`。
 - `Quick Capture` 已具备长文 `Semantic Auto-Chunking & Threading` 能力。
 - 长文切块会生成共享 `threadId`，并通过 `project / source` 线程标签把同批碎片串联起来。
-- 当前 `Phantom Weaving` 只在当前段落上运行：`2500ms debounce + Entity Lexicon + Fuse.js` 本地预筛。
+- 当前 `Phantom Weaving` 只在当前段落上运行：`2500ms debounce + Entity Lexicon + Fuse.js + Embedding Hybrid Search` 的本地混合预筛。
 - 命中后只在右下角浮出“发现相关节点”的微型提示；点击后打开右侧 `Peek Drawer`。
 - `Phantom Weaving` 最近已完成一轮故障修复：进入 Fuse 验证前的候选门槛已从 `matchedTerms >= 2` 调整为 `>= 1`，单实体高置信命中不再被提前丢弃，浏览器实测右下角提示已恢复正常。
 - Drawer 顶部可执行：`提取核心摘要`、`更新原文`。
@@ -51,13 +51,13 @@
 负责：
 
 - `Hybrid Retrieval` 向量混合召回
-- `Intent Fission` 微观主题拆解
 
 当前进度：
 
-- `v1.1 Phase 1` 已进入实现态：Quick Capture 在常规输入链路中，已先加入基于大模型的主题分离步骤；当用户一次性输入多个无关碎片时，系统会先拆成多个片段，再按顺序逐片段完成 AI 打标与入库
-- `v1.1 Phase 1` 已完成第一轮性能优化：主题分离返回片段后，系统会先以兜底维度批量落盘，让卡片立即出现在 Feed；随后再以最大并发 `2` 在后台补做 AI 打标，单片段失败不会阻断其他片段
 - `v1.1 Phase 2` 已完成第一层 Wasm 向量化基建：项目已接入 `@xenova/transformers`，新增 `src/features/search/embedder.js` 单例 Embedder 与余弦相似度函数，并通过 `scripts/test-embedder.mjs` 成功跑通 `"你好世界"` 的本地 embedding 推理
+- `v1.1 Phase 2.5` 已完成逻辑层离线实验：新增 `src/features/search/hybridSearch.js`，能够构建全量向量快照并执行“Lexicon Hits + Semantic Hits”双路融合；`scripts/test-hybrid-search.mjs` 已验证在词典失效时仍可通过语义相似度把 RAG 相关笔记排到 Top 1
+- `v1.1 Phase 3` 已进入实现态：`Hybrid Search` 已并入 `/write` 的主推荐链路，段落推荐现在会优先执行极速实体字典命中，再在本地 `vectorCache` 可用时补做语义重排；纯语义高分命中会在右下角提示与 `Peek Drawer` 中以更轻的紫色通道标记，若 Wasm 模型未完成初始化或加载失败，则静默回退到原有词典推荐，不阻断写作
+- `Intent Fission` 已被产品方向正式取消，不再作为后续版本推进重点；Quick Capture 保持现有的极简入库、长文切块与既有打标链路即可
 
 ### `v1.2`
 
@@ -65,6 +65,11 @@
 
 - 本地图片承载与图文混排
 - TOC、大纲导航与折叠编辑
+
+当前进度：
+
+- `Outliner & Fold` 已进入第一阶段实现：`/write` 已新增左侧低存在感大纲导航，会实时抽取 `H1 / H2 / H3` 并支持平滑滚动跳转
+- 标题折叠已完成工程评估：在现有 TipTap 扩展体系内要做稳定的层级折叠，需要更重的自定义节点或 Decoration 管线；当前版本先交付 TOC 导航，不强行引入重型折叠方案
 
 ### `v1.3`
 

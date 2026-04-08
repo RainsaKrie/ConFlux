@@ -15,6 +15,7 @@
 
 html {
   background: #f9f9fb;
+  scroll-behavior: smooth;
 }
 
 body {
@@ -79,6 +80,13 @@ input {
   font-weight: 600 !important;
   color: #27272a !important;
   line-height: 1.4;
+}
+
+.ProseMirror h1[id],
+.ProseMirror h2[id],
+.ProseMirror h3[id] {
+  scroll-margin-top: 8rem;
+  transition: background-color 220ms ease;
 }
 
 .ProseMirror p {
@@ -237,4 +245,20 @@ input.flux-title-input::placeholder {
   background: transparent;
   padding: 0;
   color: #27272a;
+}
+
+.editor-heading-flash {
+  animation: editor-heading-flash 1.1s ease-out;
+}
+
+@keyframes editor-heading-flash {
+  0% {
+    background-color: rgba(99, 102, 241, 0);
+  }
+  20% {
+    background-color: rgba(99, 102, 241, 0.12);
+  }
+  100% {
+    background-color: rgba(99, 102, 241, 0);
+  }
 }

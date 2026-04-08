@@ -88,6 +88,8 @@
     "retagTaskFailed": "标签重审失败：{{message}}",
     "retagFailed": "AI 重新审视失败：{{message}}",
     "recommendationCta": "发现相关节点",
+    "recommendationCtaEntities": "发现 1 个深层关联",
+    "recommendationCtaSemantic": "AI 发现 1 个潜藏关联",
     "recommendationAria": "打开智能推荐候选：{{title}}",
     "recommendationEmptyAria": "暂无智能推荐",
     "assimilationNeedRecommendation": "请先从智能推荐打开候选笔记，再执行原文更新。",
@@ -97,7 +99,8 @@
     "assimilationFailed": "原文更新失败：{{message}}",
     "poolEventAssimilation": "已更新原始笔记",
     "poolEventRollback": "已恢复至历史版本",
-    "confirmRestore": "确认将《{{title}}》恢复到 {{time}} 的版本吗？"
+    "confirmRestore": "确认将《{{title}}》恢复到 {{time}} 的版本吗？",
+    "outlineTitle": "侧边索引"
   },
   "lens": {
     "title": "引用节点",
@@ -111,6 +114,11 @@
     "extractSummary": "提取核心摘要",
     "assimilate": "更新至原始笔记",
     "currentParagraph": "当前段落",
+    "recommendationReason": {
+      "entities": "命中实体: {{terms}}",
+      "semantic": "🌌 语义引力",
+      "both": "⚡ 实体与语义双重确认"
+    },
     "localSummary": "本地摘要",
     "versionHistory": "版本历史",
     "recentVersions": "最近 {{count}} 次版本记录",

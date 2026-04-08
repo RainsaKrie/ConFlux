@@ -1,7 +1,7 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react'
 import { useCallback } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Hash, LoaderCircle, Network, Orbit, Plus, Sparkles, X } from 'lucide-react'
+import { Hash, Link, LoaderCircle, Orbit, Plus, Sparkles, X } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   buildAssimilationSystemPrompt,
@@ -11,13 +11,15 @@ import {
 } from '../ai/prompts'
 import { AssimilationInlinePreviewModal } from '../components/assimilation/AssimilationInlinePreviewModal'
 import { EditorToolbar, FluxEditor } from '../components/editor/FluxEditor'
+import { OutlinerPanel } from '../components/editor/OutlinerPanel'
 import { PeekDrawer } from '../components/editor/PeekDrawer'
 import {
   buildContextRecommendationEngine,
   buildDrawerSummary,
-  findContextRecommendation,
+  findHybridContextRecommendation,
   readCurrentParagraphText,
 } from '../features/recommendation/contextRecommendation'
+import { getVectorCacheSnapshot, warmVectorCache } from '../features/search/vectorCacheService'
 import { useTranslation } from '../i18n/I18nProvider'
 import { useFluxStore } from '../store/useFluxStore'
 import { classifyQuickCapture } from '../utils/ai'
@@ -62,6 +64,48 @@ const dimensionStyles = {
   source: 'border border-emerald-100 bg-emerald-50 text-emerald-700',
 }
 const MotionSection = motion.section
+
+function normalizeHeadingText(value = '') {
+  return value.replace(/\s+/g, ' ').trim()
+}
+
+function extractOutlineFromEditor(editor, html = '') {
+  const liveHeadings = Array.from(editor?.view?.dom?.querySelectorAll?.('h1, h2, h3') ?? [])
+  if (liveHeadings.length > 0) {
+    return liveHeadings
+      .map((node, index) => {
+        const text = normalizeHeadingText(node.textContent ?? '')
+        if (!text) return null
+
+        const id = `outline-heading-${index}`
+        node.id = id
+        node.dataset.outlineId = id
+
+        return {
+          id,
+          level: Number(node.tagName.slice(1)) || 1,
+          text,
+        }
+      })
+      .filter(Boolean)
+  }
+
+  if (!html.trim() || typeof DOMParser === 'undefined') return []
+
+  const document = new DOMParser().parseFromString(html, 'text/html')
+  return Array.from(document.querySelectorAll('h1, h2, h3'))
+    .map((node, index) => {
+      const text = normalizeHeadingText(node.textContent ?? '')
+      if (!text) return null
+
+      return {
+        id: `outline-heading-${index}`,
+        level: Number(node.tagName.slice(1)) || 1,
+        text,
+      }
+    })
+    .filter(Boolean)
+}
 
 function extractJsonObject(text = '') {
   const fenced = text.match(/```json\s*([\s\S]*?)```/i)
@@ -174,9 +218,12 @@ export function EditorPage() {
   const [assimilatingTargetId, setAssimilatingTargetId] = useState(null)
   const [assimilationPreview, setAssimilationPreview] = useState(null)
   const [editorInstance, setEditorInstance] = useState(null)
+  const [outlineItems, setOutlineItems] = useState([])
   const titleSaveTimeoutRef = useRef(null)
   const contentSaveTimeoutRef = useRef(null)
   const recommendationTimeoutRef = useRef(null)
+  const vectorWarmupTimeoutRef = useRef(null)
+  const outlineTimeoutRef = useRef(null)
   const pendingCreatedIdRef = useRef(null)
   const aiEnrichedIdsRef = useRef(new Set())
   const isHydratingRef = useRef(false)
@@ -240,6 +287,9 @@ export function EditorPage() {
         : null,
     [contextRecommendation, fluxBlocks],
   )
+  const isSemanticRecommendation = Boolean(
+    contextRecommendation?.reason === 'semantic' && (contextRecommendation?.semanticScore ?? 0) > 0.55,
+  )
   const isRecommendationDrawerActive = Boolean(
     drawerRecommendation?.targetBlockId && peekBlockId === drawerRecommendation.targetBlockId,
   )
@@ -267,6 +317,8 @@ export function EditorPage() {
       window.clearTimeout(titleSaveTimeoutRef.current)
       window.clearTimeout(contentSaveTimeoutRef.current)
       window.clearTimeout(recommendationTimeoutRef.current)
+      window.clearTimeout(vectorWarmupTimeoutRef.current)
+      window.clearTimeout(outlineTimeoutRef.current)
       setPeekBlockId(null)
     },
     [setPeekBlockId],
@@ -287,8 +339,9 @@ export function EditorPage() {
     setDrawerRecommendation(null)
     setDrawerSummary('')
     setAssimilationPreview(null)
+    setOutlineItems(extractOutlineFromEditor(editorInstance, block?.content ?? ''))
     setSaveState(t('editor.saved'))
-  }, [block?.content, block?.dimensions, block?.id, block?.title, t])
+  }, [block?.content, block?.dimensions, block?.id, block?.title, editorInstance, t])
 
   useEffect(() => {
     setSelectedRevisionId((current) => {
@@ -538,6 +591,8 @@ export function EditorPage() {
     setDrawerRecommendation({
       matchedTerms: contextRecommendation.matchedTerms,
       paragraph: contextRecommendation.paragraph,
+      reason: contextRecommendation.reason ?? 'entities',
+      semanticScore: contextRecommendation.semanticScore ?? 0,
       targetBlockId: recommendedBlock.id,
     })
     setDrawerSummary('')
@@ -733,6 +788,24 @@ export function EditorPage() {
     navigate(`/write?id=${selectedRevision.sourceBlockId}`)
   }, [navigate, selectedRevision?.sourceBlockId])
 
+  const handleJumpToOutlineItem = useCallback((item) => {
+    if (!item?.id) return
+
+    const target = document.getElementById(item.id)
+    if (!target) return
+
+    target.scrollIntoView({
+      behavior: 'smooth',
+      block: 'center',
+    })
+    target.classList.remove('editor-heading-flash')
+    void target.offsetWidth
+    target.classList.add('editor-heading-flash')
+    window.setTimeout(() => {
+      target.classList.remove('editor-heading-flash')
+    }, 1200)
+  }, [])
+
   const handleRestoreFromDrawer = () => {
     if (!peekBlock || !selectedRevision || isSelectedRevisionCurrent) return
 
@@ -805,25 +878,60 @@ export function EditorPage() {
   }, [block, blockId, content, persistDocument, t, title])
 
   useEffect(() => {
+    window.clearTimeout(vectorWarmupTimeoutRef.current)
+
+    const warmDelay = getVectorCacheSnapshot().length === 0 ? 1200 : 10000
+    vectorWarmupTimeoutRef.current = window.setTimeout(() => {
+      void warmVectorCache(fluxBlocks)
+    }, warmDelay)
+
+    return () => {
+      window.clearTimeout(vectorWarmupTimeoutRef.current)
+    }
+  }, [fluxBlocks])
+
+  useEffect(() => {
+    window.clearTimeout(outlineTimeoutRef.current)
+    outlineTimeoutRef.current = window.setTimeout(() => {
+      setOutlineItems(extractOutlineFromEditor(editorInstance, content))
+    }, 180)
+
+    return () => {
+      window.clearTimeout(outlineTimeoutRef.current)
+    }
+  }, [content, editorInstance])
+
+  useEffect(() => {
     if (isHydratingRef.current) return undefined
+
+    let isCancelled = false
 
     window.clearTimeout(recommendationTimeoutRef.current)
     recommendationTimeoutRef.current = window.setTimeout(() => {
-      const { paragraph } = getCurrentParagraphSnapshot()
-      if (!paragraph.trim()) {
-        setContextRecommendation(null)
-        return
+      const runRecommendation = async () => {
+        const { activeBlockId, paragraph } = getCurrentParagraphSnapshot()
+        if (!paragraph.trim()) {
+          if (!isCancelled) setContextRecommendation(null)
+          return
+        }
+
+        const nextRecommendation = await findHybridContextRecommendation({
+          activeBlockId,
+          activePoolContext,
+          engine: recommendationEngine,
+          paragraph,
+          vectorSnapshot: getVectorCacheSnapshot(),
+        })
+        if (!isCancelled) {
+          setContextRecommendation(nextRecommendation)
+        }
       }
 
-      const nextRecommendation = findContextRecommendation({
-        activePoolContext,
-        engine: recommendationEngine,
-        paragraph,
-      })
-      setContextRecommendation(nextRecommendation)
+      void runRecommendation()
     }, 2500)
 
     return () => {
+      isCancelled = true
       window.clearTimeout(recommendationTimeoutRef.current)
     }
   }, [activePoolContext, content, getCurrentParagraphSnapshot, recommendationEngine])
@@ -838,6 +946,12 @@ export function EditorPage() {
 
   return (
     <>
+      <OutlinerPanel
+        items={outlineItems}
+        onJump={handleJumpToOutlineItem}
+        title={t('editor.outlineTitle')}
+      />
+
       <MotionSection
         initial={{ opacity: 0, y: 18 }}
         animate={{ opacity: 1, y: 0 }}
@@ -1019,12 +1133,24 @@ export function EditorPage() {
             ? t('editor.recommendationAria', { title: recommendedBlock.title })
             : t('editor.recommendationEmptyAria')
         }
-        className={`fixed bottom-6 right-6 z-40 flex items-center gap-1.5 rounded-full border border-zinc-200/50 bg-white/80 px-2 py-1 text-[10px] text-zinc-400 shadow-sm transition-all hover:text-indigo-600 ${
+        className={`fixed bottom-6 right-6 z-40 flex items-center gap-1.5 rounded-full border px-2 py-1 text-[10px] shadow-sm transition-all ${
+          isSemanticRecommendation
+            ? 'border-purple-200/70 bg-gradient-to-r from-white via-purple-50/90 to-white text-purple-500 shadow-[0_10px_30px_rgba(168,85,247,0.12)] hover:text-purple-600'
+            : 'border-zinc-200/50 bg-white/80 text-zinc-400 hover:text-indigo-600'
+        } ${
           recommendedBlock ? 'cursor-pointer opacity-100' : 'pointer-events-none opacity-0'
         }`}
       >
-        <Network size={10} strokeWidth={2} />
-        <span>{t('editor.recommendationCta')}</span>
+        {isSemanticRecommendation ? (
+          <Sparkles size={10} strokeWidth={2} className="text-purple-400" />
+        ) : (
+          <Link size={10} strokeWidth={2} />
+        )}
+        <span>
+          {isSemanticRecommendation
+            ? t('editor.recommendationCtaSemantic')
+            : t('editor.recommendationCtaEntities')}
+        </span>
       </button>
 
       <AnimatePresence>

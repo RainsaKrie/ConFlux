@@ -19,7 +19,7 @@
 - Feed / Write / Graph 三视角骨架
 - 扁平 `fluxBlocks`、`savedPools` 与 Zustand persist
 - `Adaptive Lens` 显式引用节点与右侧 `Peek Drawer`
-- 段落级 `Phantom Weaving`：`2500ms debounce + Entity Lexicon + Fuse.js`
+- 段落级 `Phantom Weaving`：`2500ms debounce + Entity Lexicon + Fuse.js + Embedding Hybrid Search`
 - 用户确认后才真正触发的 `Crystal Assimilation`
 - 差异预览、线性 revision、恢复与来源追溯
 - `activePoolContext`、`recentPoolEvents` 与 `recentAiTasks` 跨视图连续体验
@@ -186,11 +186,11 @@
   - 引入本地或极轻量级 Embedding 检索，辅助 `Entity Lexicon`
   - 让 `Phantom Weaving` 具备同义词、近义词理解能力
   - `Phase 2` 基建已进入实现态：已引入 `@xenova/transformers`，完成纯前端 `Xenova/all-MiniLM-L6-v2` 单例 Embedder、余弦相似度工具与本地验证脚本，`"你好世界"` 向量推理已成功输出 `384` 维 embedding，当前未遇到 Vite 构建层面的 Transformers.js 配置报错
+  - `Phase 2.5` 离线实验已进入实现态：已新增 `buildVectorSnapshot()` 与 `performHybridSearch()`，完成“实体字典 + 向量相似度”双路融合逻辑；离线靶场中，在查询不包含 `RAG` 词面的情况下，纯语义通道仍能将 `block_rag` 稳定召回为 Top 1
+  - `Phase 3` 已进入实现态：`Hybrid Search` 已静默并入 `/write` 主推荐链路；系统会在后台维护内存级 `vectorCache` 快照，优先走 `Entity Lexicon`，若本地向量缓存可用则再执行语义重排，并以 `entities / semantic / both` 归因结果驱动右下角提示与 `Peek Drawer` 的轻量视觉差异；Wasm 模型初始化失败时会无感回退到原有单路词典匹配
 - `意图裂变器 (Intent Fission)`
-  - 在 Quick Capture 阶段拦截混杂长文本
-  - 通过大模型把输入拆成多个具备独立标签的原子知识块
-  - `Phase 1` 已进入实现态：Quick Capture 在常规短输入提交时，会先通过独立的主题分离请求判断是否存在多个无关意图；若命中多个主题，则按片段顺序逐一执行 AI 打标与入库，避免混合语义污染单个 Block
-  - 已补上第一轮性能优化：主题分离后改为“先以兜底标签批量落盘，再以最大并发 `2` 在后台补做 AI 打标”，显著降低多片段输入时的体感等待
+  - 该方向已被产品决策正式取消，不再作为 `v1.1` 的继续推进项
+  - 当前 Quick Capture 保持“极简入库 + 现有打标/切块”策略，不再继续增加主题分离链路的复杂度与延迟
 
 ### `v1.2` 创作体验期
 
@@ -203,6 +203,8 @@
   - 通过 `IndexedDB` 承载媒体资源，突破 `localStorage` 容量硬顶
 - `动态大纲与折叠 (Outliner & Fold)`
   - 在主编辑器与 `Peek Drawer` 中补齐 TOC、大纲跳转与折叠能力
+  - 当前已进入第一阶段实现：`/write` 已补上左侧低存在感大纲导航，实时抽取 `H1 / H2 / H3` 并支持平滑滚动跳转
+  - 折叠能力已完成第一轮工程评估：若要在现有 TipTap 里做真正可用的标题级折叠，需要引入更重的自定义节点或 Decoration 管线；当前先保持 Zen 方案，只交付导航，不在这一轮强接重型折叠扩展
 
 ### `v1.3` 信息流管网期
 

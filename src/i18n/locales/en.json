@@ -88,6 +88,8 @@
     "retagTaskFailed": "Tagging failed: {{message}}",
     "retagFailed": "AI re-evaluation failed: {{message}}",
     "recommendationCta": "1 Insight found",
+    "recommendationCtaEntities": "Found 1 deep link",
+    "recommendationCtaSemantic": "AI found 1 latent link",
     "recommendationAria": "Open suggestion: {{title}}",
     "recommendationEmptyAria": "No insight found",
     "assimilationNeedRecommendation": "Open a suggested note first, then update the source note.",
@@ -97,7 +99,8 @@
     "assimilationFailed": "Source update failed: {{message}}",
     "poolEventAssimilation": "Source note updated",
     "poolEventRollback": "Restored to a previous revision",
-    "confirmRestore": "Restore \"{{title}}\" to the revision from {{time}}?"
+    "confirmRestore": "Restore \"{{title}}\" to the revision from {{time}}?",
+    "outlineTitle": "Side index"
   },
   "lens": {
     "title": "Reference",
@@ -111,6 +114,11 @@
     "extractSummary": "Extract summary",
     "assimilate": "Assimilate back to source",
     "currentParagraph": "Current paragraph",
+    "recommendationReason": {
+      "entities": "Matched entities: {{terms}}",
+      "semantic": "🌌 Semantic pull",
+      "both": "⚡ Entity + semantic confirmation"
+    },
     "localSummary": "Local summary",
     "versionHistory": "Revision history",
     "recentVersions": "{{count}} recent revisions",

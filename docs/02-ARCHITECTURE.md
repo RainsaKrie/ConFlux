@@ -77,6 +77,8 @@ Conflux 当前是一套纯前端 React MVP，技术栈为：
 - `src/components/editor/`：TipTap 编辑器与 `Adaptive Lens` 扩展
 - `src/features/recommendation/`：段落级本地推荐引擎
 - `src/features/search/embedder.js`：浏览器侧 Wasm Embedding 单例与余弦相似度工具
+- `src/features/search/hybridSearch.js`：向量快照构建、双路召回融合与离线实验入口
+- `src/features/search/vectorCacheService.js`：内存级向量快照缓存与异步预热
 - `src/features/metadata/`：补充元数据概览与轻量统计
 - `src/features/graph/`：图谱渲染、搜索、相机控制与常量
 - `src/features/pools/`：Pool 上下文与筛选工具
@@ -154,14 +156,11 @@ type FluxBlock = {
 6. 批量调用 `addBlocks()` 落盘
 7. 默认跳过逐块 AI 打标，避免并发洪峰
 
-对于未超过长文阈值的常规 Quick Capture，`v1.1 Phase 1` 已补上一条前置链路：
+对于未超过长文阈值的常规 Quick Capture，当前产品方向已经收敛为：
 
 1. 用户提交普通长度输入
-2. 若本地 `BYOK` 已就绪，则先调用一次 `Intent Fission` 主题分离请求
-3. 模型返回单片段时沿用原单 Block 提交流程；返回多片段时，将输入物理拆成多个原子片段
-4. 各片段先以兜底维度批量 `addBlocks()` 落盘，让结果立即出现在 Feed 中
-5. 若本地 `BYOK` 已就绪，则再以最大并发 `2` 在后台补做标题生成与维度打标；单片段失败时保留兜底维度，不阻断其他片段
-6. 若未配置 API Key，则直接跳过主题分离后的 AI 打标阶段，按现有兜底维度写入并保留单一或多片段结果，保证输入永不被阻断
+2. 系统保持现有的极简入库与主维度打标策略
+3. 不再继续扩展 `Intent Fission` 主题分离链路，避免为高频输入引入额外延迟与语义破碎风险
 
 ### 6.2 Phantom Weaving
 
@@ -169,9 +168,16 @@ type FluxBlock = {
 
 1. 用户在 `/write` 中持续写作
 2. 当输入停止 `2500ms` 后，只提取光标所在自然段落
-3. 本地 `Entity Lexicon + Fuse.js` 做高置信预筛
-4. 命中后只浮出右下角轻提示
-5. 用户主动点击后，右侧 Drawer 打开候选笔记
+3. 本地 `Entity Lexicon + Fuse.js` 做极速高置信预筛
+4. 若后台内存级 `vectorCache` 已就绪，则再为当前段落生成单句向量，并通过 `performHybridSearch()` 执行“实体命中 + 语义命中”双路重排
+5. 命中后只浮出右下角轻提示：实体命中沿用普通链路，纯语义高分命中则以更轻的紫色视觉通道标记
+6. 用户主动点击后，右侧 Drawer 打开候选笔记，并显示 `entities / semantic / both` 的命中归因
+
+额外约束：
+
+- 全库 Embedding 不在段落 debounce 的同一帧重算
+- `vectorCache` 只在应用运行期间以内存快照存在，并在 `fluxBlocks` 变动后延迟异步预热
+- 若 Wasm 模型尚未初始化完成、网络加载失败或浏览器资源不足，则静默回退到原有单路词典匹配
 
 ### 6.3 Crystal Assimilation
 
@@ -190,10 +196,9 @@ type FluxBlock = {
 
 ### 7.1 `v1.1` 架构任务
 
-只处理主动感知与输入拆解：
+只处理主动感知：
 
 - `Hybrid Search`：把段落推荐从单纯 `Fuse.js` 升级为“词典 + Embedding”混合召回
-- `Intent Fission`：把 Quick Capture 从物理切块升级为带主题分离的智能拆解
 
 其中 `Hybrid Search` 的当前基建状态为：
 
@@ -201,6 +206,8 @@ type FluxBlock = {
 - 已以 `Xenova/all-MiniLM-L6-v2` 封装本地单例 Embedder，保持纯前端、本地优先、无明文后端外发
 - 已补上余弦相似度工具，作为后续向量召回排序的数学底座
 - 已通过独立脚本验证模型下载、缓存与本地推理可用，当前未出现 Vite 对 Transformers.js 的构建配置报错
+- 已完成 `buildVectorSnapshot()` 与 `performHybridSearch()` 的逻辑层封装，可在不修改 UI 主线程的前提下离线验证“实体命中 + 语义命中 + 双命中”三类归因结果
+- 已完成 `vectorCacheService` 与 `/write` 主推荐链路接线：当前段落推荐会优先走词典，再在缓存可用时补做语义重排，并在 UI 上区分普通关联与纯语义潜藏关联
 
 ### 7.2 `v1.2` 架构任务
 
@@ -208,6 +215,8 @@ type FluxBlock = {
 
 - `Local Media Support`：引入 `IndexedDB` 承载本地图片与媒体资源
 - `Outliner & Fold`：为主编辑器与 `Peek Drawer` 提供 TOC、大纲导航与折叠能力
+  - 当前第一阶段已落地 `/write` 左侧低存在感 Outliner：实时抽取 `H1 / H2 / H3` 并提供平滑滚动跳转
+  - 标题折叠仍处于评估态：若继续推进，需要在现有 TipTap 上补齐更重的自定义节点或 Decoration 管线，本轮先不把复杂折叠逻辑接入主链
 
 ### 7.3 `v1.3` 架构任务
 
@@ -230,7 +239,7 @@ type FluxBlock = {
 当前所有待决架构问题，统一归属如下：
 
 - `Phantom Weaving` 仍停留在高置信词典预筛：归 `v1.1`
-- Quick Capture 仍主要依赖物理切块：归 `v1.1`
+- Quick Capture 继续保持极简入库与物理切块，不再继续扩展主题裂变链路
 - 图片与多媒体尚未进入稳定存储链路：归 `v1.2`
 - 长文创作缺少 TOC 与折叠：归 `v1.2`
 - Canvas、批量属性治理与表格视图缺位：归 `v1.3`

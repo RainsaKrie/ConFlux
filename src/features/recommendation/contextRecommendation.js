@@ -1,5 +1,6 @@
 ﻿import Fuse from 'fuse.js'
 import { getPoolMatchScore } from '../pools/utils.js'
+import { performHybridSearch } from '../search/hybridSearch.js'
 
 const MIN_PARAGRAPH_LENGTH = 8
 const MIN_MATCHED_TERMS = 1
@@ -152,28 +153,13 @@ function collectMatchedTerms(entry, normalizedParagraph) {
   return matched
 }
 
-export function readCurrentParagraphText(editor) {
-  const parentText = editor?.state?.selection?.$from?.parent?.textContent ?? ''
-  return parentText.replace(/\s+/g, ' ').trim()
-}
-
-export function buildDrawerSummary(content = '') {
-  const normalized = content.replace(/\s+/g, ' ').trim()
-  if (!normalized) return ''
-
-  const sentenceMatch = normalized.match(/^(.{1,120}?[。！？!?])/)
-  if (sentenceMatch?.[1]) return sentenceMatch[1]
-  if (normalized.length <= 120) return normalized
-  return `${normalized.slice(0, 120)}...`
-}
-
-export function findContextRecommendation({ activePoolContext, engine, paragraph }) {
-  if (!engine?.entries?.length) return null
+function buildLexiconCandidates({ activePoolContext, engine, paragraph }) {
+  if (!engine?.entries?.length) return []
 
   const normalizedParagraph = normalizeSearchValue(paragraph)
-  if (!normalizedParagraph || normalizedParagraph.length < MIN_PARAGRAPH_LENGTH) return null
+  if (!normalizedParagraph || normalizedParagraph.length < MIN_PARAGRAPH_LENGTH) return []
 
-  const candidates = engine.entries
+  return engine.entries
     .map((entry) => {
       const matchedTerms = collectMatchedTerms(entry, normalizedParagraph)
       if (matchedTerms.length < MIN_MATCHED_TERMS) return null
@@ -191,6 +177,7 @@ export function findContextRecommendation({ activePoolContext, engine, paragraph
 
       return {
         block: entry.block,
+        blockId: entry.blockId,
         confidence,
         fuseScore,
         matchedTerms: matchedTerms.map((term) => term.raw),
@@ -202,6 +189,86 @@ export function findContextRecommendation({ activePoolContext, engine, paragraph
       if (right.confidence !== left.confidence) return right.confidence - left.confidence
       return left.fuseScore - right.fuseScore
     })
+}
 
+export function readCurrentParagraphText(editor) {
+  const parentText = editor?.state?.selection?.$from?.parent?.textContent ?? ''
+  return parentText.replace(/\s+/g, ' ').trim()
+}
+
+export function buildDrawerSummary(content = '') {
+  const normalized = content.replace(/\s+/g, ' ').trim()
+  if (!normalized) return ''
+
+  const sentenceMatch = normalized.match(/^(.{1,120}?[。！？!?])/)
+  if (sentenceMatch?.[1]) return sentenceMatch[1]
+  if (normalized.length <= 120) return normalized
+  return `${normalized.slice(0, 120)}...`
+}
+
+export function findContextRecommendation({ activePoolContext, engine, paragraph }) {
+  const candidates = buildLexiconCandidates({ activePoolContext, engine, paragraph })
   return candidates[0] ?? null
+}
+
+export async function findHybridContextRecommendation({
+  activeBlockId = null,
+  activePoolContext,
+  engine,
+  paragraph,
+  vectorSnapshot = [],
+}) {
+  const normalizedParagraph = normalizeSearchValue(paragraph)
+  if (!normalizedParagraph || normalizedParagraph.length < MIN_PARAGRAPH_LENGTH) return null
+
+  const lexiconCandidates = buildLexiconCandidates({ activePoolContext, engine, paragraph })
+  const lexiconTopHit = lexiconCandidates[0] ?? null
+
+  if (!vectorSnapshot.length) {
+    return lexiconTopHit
+      ? {
+          ...lexiconTopHit,
+          reason: 'entities',
+          semanticScore: 0,
+        }
+      : null
+  }
+
+  try {
+    const hybridResults = await performHybridSearch(paragraph, vectorSnapshot, lexiconCandidates, {
+      limit: 2,
+    })
+    const topHit = hybridResults.find((result) => result.blockId !== activeBlockId) ?? null
+
+    if (!topHit) {
+      return lexiconTopHit
+        ? {
+            ...lexiconTopHit,
+            reason: 'entities',
+            semanticScore: 0,
+          }
+        : null
+    }
+
+    const matchingLexiconHit = lexiconCandidates.find((candidate) => candidate.blockId === topHit.blockId) ?? null
+
+    return {
+      block: topHit.block,
+      blockId: topHit.blockId,
+      confidence: topHit.lexiconScore || Math.round(topHit.semanticScore * 100),
+      fuseScore: matchingLexiconHit?.fuseScore ?? 1,
+      matchedTerms: topHit.matchedTerms ?? [],
+      paragraph: paragraph.trim(),
+      reason: topHit.reason,
+      semanticScore: topHit.semanticScore ?? 0,
+    }
+  } catch {
+    return lexiconTopHit
+      ? {
+          ...lexiconTopHit,
+          reason: 'entities',
+          semanticScore: 0,
+        }
+      : null
+  }
 }

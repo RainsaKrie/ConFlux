@@ -69,6 +69,20 @@ export function PeekDrawer({
     return t('drawer.revisionType.assimilation')
   }
 
+  const recommendationReason = drawerRecommendation?.reason ?? 'entities'
+  const recommendationReasonLabel = recommendationReason === 'semantic'
+    ? t('drawer.recommendationReason.semantic')
+    : recommendationReason === 'both'
+      ? t('drawer.recommendationReason.both')
+      : t('drawer.recommendationReason.entities', {
+          terms: (drawerRecommendation?.matchedTerms ?? []).slice(0, 2).join(' / '),
+        })
+  const recommendationReasonClassName = recommendationReason === 'semantic'
+    ? 'border border-purple-100 bg-purple-50 text-purple-700'
+    : recommendationReason === 'both'
+      ? 'border border-amber-100 bg-amber-50 text-amber-700'
+      : 'border border-indigo-100 bg-indigo-50 text-indigo-600'
+
   return (
     <MotionAside
       initial={{ x: '100%' }}
@@ -137,7 +151,13 @@ export function PeekDrawer({
             <p className="mt-2 text-sm leading-6 text-zinc-600">{drawerRecommendation?.paragraph}</p>
           </div>
 
-          {drawerRecommendation?.matchedTerms?.length ? (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <span className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${recommendationReasonClassName}`}>
+              {recommendationReasonLabel}
+            </span>
+          </div>
+
+          {drawerRecommendation?.matchedTerms?.length && recommendationReason !== 'semantic' ? (
             <div className="mt-3 flex flex-wrap items-center gap-2">
               {drawerRecommendation.matchedTerms.slice(0, 4).map((term) => (
                 <span
