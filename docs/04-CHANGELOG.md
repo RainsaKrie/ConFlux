@@ -198,13 +198,11 @@
 
 负责事项：
 
-- `多媒体承载 (Local Media Support)`
-  - 支持图片本地粘贴与拖拽上传
-  - 通过 `IndexedDB` 承载媒体资源，突破 `localStorage` 容量硬顶
 - `动态大纲与折叠 (Outliner & Fold)`
   - 在主编辑器与 `Peek Drawer` 中补齐 TOC、大纲跳转与折叠能力
   - 当前已进入第一阶段实现：`/write` 已补上左侧低存在感大纲导航，实时抽取 `H1 / H2 / H3` 并支持平滑滚动跳转
   - 折叠能力已完成第一轮工程评估：若要在现有 TipTap 里做真正可用的标题级折叠，需要引入更重的自定义节点或 Decoration 管线；当前先保持 Zen 方案，只交付导航，不在这一轮强接重型折叠扩展
+- `v1.2` 当前已视为体验层收口：左侧 TOC 与平滑滚动已进入基线；纯 Web `IndexedDB` 媒体方案正式废弃，不再继续推进
 
 ### `v1.3` 信息流管网期
 
@@ -217,27 +215,78 @@
 - `高级属性看板 (Advanced Properties)`
   - 提供表格视图与批量属性整理入口
   - 放开维度的高级手动治理能力
+- `v1.3` 当前从“最近排期”降级为“视图扩张储备”：白板与高级属性治理保留目标，但优先级后撤，让位于桌面原生底座置换
 
-### `v2.0-Alpha` 平台跨越期
+### `v2.0-Alpha` 桌面壳层初始化期
 
-定位：`Desktop Native & Interop`
+定位：`Desktop Shell Bootstrap`
 
 负责事项：
 
 - `架构逃逸 (Tauri Encapsulation)`
-  - 使用 `Tauri v2` 打包 React 产物
-  - 使用本地 `SQLite` 代替浏览器 `IndexedDB`
-- `系统级集成 (OS Integration)`
-  - 监听全局快捷键，在任何软件上层悬浮唤出 `Quick Capture`
-- `本地优先同步 (P2P / Git-backed Sync)`
-  - 介入文件系统，让笔记以 `Markdown / JSON` 形式落盘
-  - 为 WebDAV 或 Git 增量备份提供基础
+  - 使用 `Tauri v2` 为现有 React/Vite 工程套入桌面壳层
+  - 当前已进入实现态：项目根目录已接入 `src-tauri/`，并配置 `tauri:dev / tauri:build`、`beforeBuildCommand: npm run build`、`devUrl: http://localhost:5173`
+  - 桌面窗口当前已切到 `Conflux` 无边框壳层：默认 `1280 x 800`
+  - 前端与 Rust 之间已补上第一条 IPC 探针：前端启动时会在 Tauri 环境中静默 `invoke('hello_conflux_desktop')`
+
+### `v2.0` 存储纪元
+
+定位：`Native Persistence & Media`
+
+负责事项：
+
+- `引擎置换`
+  - 使用 Tauri Plugin Store（JSON）或 SQLite 替换浏览器 `localStorage`
+  - 为 `fluxBlocks` 的异步落盘与迁移建立桌面原生主轴
+  - `v2.0.x` 已进入实现态：Zustand persist 已切换为 Tauri Store 异步适配，首启会从 legacy `localStorage` 进行无损迁移并落盘到 `conflux_universe.json`
+- `原生多媒体`
+  - 直接接管剪贴板、拖拽与文件系统 API
+  - 将图片与附件保存到本地隔离目录，如 `~/.conflux/media/`
+  - TipTap 正文仅渲染本地资源标识符或路径引用
+
+### `v2.1` 桌面心流期
+
+定位：`OS-Level Ergonomics`
+
+负责事项：
+
+- `Global Shortcuts`
+  - 注册系统级快捷键，例如 `Cmd/Ctrl + Shift + Space`
+  - 在任意第三方软件之上呼出极简 `Quick Capture`
+- `系统托盘与静默守护`
+  - 引入 Tray 常驻入口
+  - 让后台轻量任务与词典预热脱离主窗口生命周期
+
+### `v2.2` 视图扩张期
+
+定位：`Advanced Views`
+
+负责事项：
+
+- `无限白板 (承接原 v1.3)`
+  - 在桌面性能边界下重启 `Infinite Canvas`
+  - 引入 `tldraw` 等二维引擎承载自由布局
+- `数据库视图`
+  - 提供 `Table / Properties View`
+  - 对 `domain / format / project / stage / source` 做批量治理与筛选
+
+### `v2.3` 算力下沉期
+
+定位：`Rust Backend & Local LLM`
+
+负责事项：
+
+- `Rust 多线程调度`
+  - 将长文 `Semantic Auto-Chunking`、全库嗅探与重型检索任务下沉到 Rust 后端
+- `离线大模型直连`
+  - 在 BYOK 之外原生适配 Ollama 等本地大模型
+  - 支持断网 AI 打标、同化与生成链路
 
 ## 5. 当前阶段结论
 
 当前阶段依然不是继续往后跳版本，而是把 `v1.0` 稳定化基线收好，为连续的 `v1.x` 演进铺路。
 
-现在所有工作都必须回答一个问题：它究竟属于 `v1.1`、`v1.2`、`v1.3` 还是 `v2.0-Alpha`。
+现在所有工作都必须回答一个问题：它究竟属于 `v1.1`、`v1.2`、`v1.3`、`v2.0-Alpha`、`v2.0`、`v2.1`、`v2.2` 还是 `v2.3`。
 
 如果答不出来，就不进入排期。
 

@@ -1,5 +1,6 @@
 ﻿import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+import { createJSONStorage, persist } from 'zustand/middleware'
+import { LazyStore } from '@tauri-apps/plugin-store'
 import { buildSeedFluxBlocks } from '../data/seedData'
 import { getInitialLanguage } from '../i18n/config'
 import { matchesDimensionValue } from '../utils/displayTag'
@@ -7,8 +8,104 @@ import { matchesDimensionValue } from '../utils/displayTag'
 const MAX_BLOCK_REVISIONS = 5
 const MAX_POOL_EVENTS = 12
 const MAX_AI_TASKS = 12
+const STORE_SAVE_DEBOUNCE_MS = 800
 
 const INITIAL_LANGUAGE = getInitialLanguage()
+
+const tauriStore = new LazyStore('conflux_universe.json')
+let pendingStoreSaveTimer = null
+let pendingStoreSavePromise = null
+let pendingStoreSaveResolve = null
+
+function canUseLocalStorage() {
+  return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined'
+}
+
+function readLegacyStorage(key) {
+  if (!canUseLocalStorage()) return null
+  const raw = window.localStorage.getItem(key)
+  return raw ? JSON.parse(raw) : null
+}
+
+function writeLegacyStorage(key, value) {
+  if (!canUseLocalStorage()) return
+  window.localStorage.setItem(key, JSON.stringify(value))
+}
+
+function removeLegacyStorage(key) {
+  if (!canUseLocalStorage()) return
+  window.localStorage.removeItem(key)
+}
+
+async function scheduleStoreSave() {
+  if (pendingStoreSavePromise) return pendingStoreSavePromise
+
+  pendingStoreSavePromise = new Promise((resolve) => {
+    pendingStoreSaveResolve = resolve
+  })
+
+  if (pendingStoreSaveTimer) {
+    clearTimeout(pendingStoreSaveTimer)
+  }
+
+  pendingStoreSaveTimer = setTimeout(async () => {
+    try {
+      await tauriStore.save()
+    } finally {
+      pendingStoreSaveTimer = null
+      pendingStoreSavePromise = null
+      if (pendingStoreSaveResolve) {
+        pendingStoreSaveResolve()
+        pendingStoreSaveResolve = null
+      }
+    }
+  }, STORE_SAVE_DEBOUNCE_MS)
+
+  return pendingStoreSavePromise
+}
+
+const tauriPersistStorage = {
+  getItem: async (name) => {
+    try {
+      const value = await tauriStore.get(name)
+
+      if (!value) {
+        const legacyData = readLegacyStorage(name)
+        if (legacyData) {
+          console.info('Detected legacy storage, migrating to Tauri Store.')
+          await tauriStore.set(name, legacyData)
+          await tauriStore.save()
+          return legacyData
+        }
+      }
+
+      return value ?? null
+    } catch (error) {
+      console.error('Tauri Store read failed, falling back to localStorage.', error)
+      return readLegacyStorage(name)
+    }
+  },
+  setItem: async (name, value) => {
+    try {
+      await tauriStore.set(name, value)
+      await scheduleStoreSave()
+      writeLegacyStorage(name, value)
+    } catch (error) {
+      console.warn('Tauri Store write failed, falling back to localStorage.', error)
+      writeLegacyStorage(name, value)
+    }
+  },
+  removeItem: async (name) => {
+    try {
+      await tauriStore.delete(name)
+      await tauriStore.save()
+      removeLegacyStorage(name)
+    } catch (error) {
+      console.warn('Tauri Store delete failed, falling back to localStorage.', error)
+      removeLegacyStorage(name)
+    }
+  },
+}
 
 function buildDefaultSavedPools(language = 'zh') {
   return [
@@ -393,6 +490,7 @@ export const useFluxStore = create(
     {
       name: 'flux_blocks_store',
       version: 3,
+      storage: createJSONStorage(() => tauriPersistStorage),
       migrate: (persistedState) => {
         const state = persistedState && typeof persistedState === 'object' ? persistedState : {}
 

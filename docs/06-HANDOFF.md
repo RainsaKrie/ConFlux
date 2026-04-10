@@ -89,6 +89,25 @@
 - 系统级全局快捷键与桌面 Quick Capture
 - 跨设备 revision 与不再局限于本地线性历史的版本系统
 
+当前进度：
+
+- 桌面壳层初始化已进入实现态：项目已新增 `src-tauri/`，并在 `package.json` 中补上 `tauri:dev / tauri:build`
+- 当前窗口壳层已配置为无边框 `Conflux` 桌面窗口，默认尺寸 `1280 x 800`
+- 前端与 Rust 之间已预埋极简 IPC 探针：在 Tauri 环境中会静默 `invoke('hello_conflux_desktop')`
+
+### `v2.0`
+
+负责：
+
+- `Native Persistence & Media`
+
+当前进度：
+
+- 已完成 `Tauri Store` 插件注册与权限开启，桌面端可读写本地 `conflux_universe.json`
+- Zustand persist 已切换为异步 `Tauri Store` 适配，首启会从 legacy `localStorage` 自动迁移并落盘
+- 写入已加入轻量防抖，避免高频持久化阻塞
+- 非 Tauri 环境下自动回退至 `localStorage`，保持 Web 调试不中断
+
 ## 5. 默认续开发协议
 
 如果下次用户只说“继续”“看 docs 继续”“同步 docs 并推进”，默认按下面流程执行：

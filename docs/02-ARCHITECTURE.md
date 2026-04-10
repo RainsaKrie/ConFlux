@@ -86,6 +86,7 @@ Conflux 当前是一套纯前端 React MVP，技术栈为：
 - `src/utils/documentChunker.js`：长文切块与线程标签
 - `src/utils/relations.js`：Feed / Graph 共用关系推导
 - `scripts/verify-phantom.mjs`：长文切块与本地推荐的极限回归入口
+- `src-tauri/`：桌面壳层、Rust 入口与后续本地能力接入点
 
 ## 5. 当前核心数据模型
 
@@ -211,28 +212,45 @@ type FluxBlock = {
 
 ### 7.2 `v1.2` 架构任务
 
-只处理编辑器成熟度：
+只处理已经能在当前主链安全收口的编辑器成熟度：
 
-- `Local Media Support`：引入 `IndexedDB` 承载本地图片与媒体资源
 - `Outliner & Fold`：为主编辑器与 `Peek Drawer` 提供 TOC、大纲导航与折叠能力
   - 当前第一阶段已落地 `/write` 左侧低存在感 Outliner：实时抽取 `H1 / H2 / H3` 并提供平滑滚动跳转
   - 标题折叠仍处于评估态：若继续推进，需要在现有 TipTap 上补齐更重的自定义节点或 Decoration 管线，本轮先不把复杂折叠逻辑接入主链
+- 明确放弃在纯 Web 架构中以 `IndexedDB` 解决富媒体容量瓶颈的路线；媒体承载已转入桌面原生阶段处理
 
 ### 7.3 `v1.3` 架构任务
 
-只处理知识流治理与编排视图：
+原本规划中的知识流治理与编排视图仍然成立，但优先级已后撤：
 
-- `Infinite Canvas / Whiteboard`：提供自由拖拽二维看板
-- `Advanced Properties`：提供表格视图、批量属性整理与更成熟的维度治理层
+- `Infinite Canvas / Whiteboard`：保留为未来视图扩张方向
+- `Advanced Properties`：保留为未来表格治理方向
+- 在桌面原生持久化与媒体底座稳定前，不再优先推进这一层 UI 扩张
 
-### 7.4 `v2.0-Alpha` 架构任务
+### 7.4 `v2.x` 架构任务
 
-只处理桌面化与互操作：
+桌面原生阶段的架构任务已重新收敛为一条连续路线，而不是分散的 Web 存储补丁：
 
-- `Tauri v2 + SQLite` 替换浏览器存储主轴
-- 基于文件系统实现本地优先落盘与同步基础
-- 引入系统级全局快捷键与桌面 Quick Capture 胶囊
-- 让版本历史逐步跨越单机线性数组的限制
+- `v2.0`：`Native Persistence & Media`
+  - 使用 Tauri Plugin Store（JSON）或 SQLite 替换浏览器 `localStorage`
+  - 通过原生文件系统承载图片与附件，不再继续使用 `IndexedDB` 作为富媒体主方案
+  - `v2.0.x` 已进入实现态：Zustand persist 已切换为 Tauri Store 异步适配，首启会从 legacy `localStorage` 无损迁移并落盘到 `conflux_universe.json`
+- `v2.1`：`OS-Level Ergonomics`
+  - 注册全局快捷键
+  - 引入系统托盘与后台常驻宿主
+- `v2.2`：`Advanced Views`
+  - 在桌面底座稳定后再重启 `Infinite Canvas / Whiteboard`
+  - 将高级属性治理与表格视图并入桌面数据视图层
+- `v2.3`：`Rust Backend & Local LLM`
+  - 将长文切块、全库检索与重型任务下沉到 Rust 后端
+  - 在 BYOK 之外补齐 Ollama 等本地大模型接入路径
+
+当前 `v2.0-Alpha` 已进入壳层初始化态：
+
+- 已在现有 React/Vite 结构外层接入 `Tauri v2`，保持前端业务代码不迁移
+- `src-tauri/tauri.conf.json` 已配置 `beforeBuildCommand: npm run build`、`devUrl: http://localhost:5173`
+- 桌面窗口已切换为 `Conflux` 的无边框壳层，默认尺寸 `1280 x 800`
+- 前端顶层已接入一条极简 IPC 探针：在 Tauri 环境中静默调用 Rust `hello_conflux_desktop` 命令，用于验证桌面通信链路
 
 ## 8. 架构问题归属表
 
@@ -240,11 +258,11 @@ type FluxBlock = {
 
 - `Phantom Weaving` 仍停留在高置信词典预筛：归 `v1.1`
 - Quick Capture 继续保持极简入库与物理切块，不再继续扩展主题裂变链路
-- 图片与多媒体尚未进入稳定存储链路：归 `v1.2`
-- 长文创作缺少 TOC 与折叠：归 `v1.2`
-- Canvas、批量属性治理与表格视图缺位：归 `v1.3`
+- 长文创作的 TOC 已进入当前基线，折叠仍属 `v1.2` 余项
+- 图片与多媒体不再归属纯 Web `v1.2`，统一并入 `v2.0`
+- Canvas、批量属性治理与表格视图不再优先作为 `v1.3` 最近战役，统一并入 `v2.2`
 - `stage / source` 缺少成熟治理层：归 `v1.3`
-- 后端化、同步、桌面化、本地数据库、跨设备 revision：归 `v2.0-Alpha`
+- 桌面化、原生存储、系统级捕获、后端化与本地模型：归 `v2.x`
 
 没有归属到版本的架构事项，不进入开发排期。
 
