@@ -228,6 +228,8 @@
   - 当前已进入实现态：项目根目录已接入 `src-tauri/`，并配置 `tauri:dev / tauri:build`、`beforeBuildCommand: npm run build`、`devUrl: http://localhost:5173`
   - 桌面窗口当前已切到 `Conflux` 无边框壳层：默认 `1280 x 800`
   - 前端与 Rust 之间已补上第一条 IPC 探针：前端启动时会在 Tauri 环境中静默 `invoke('hello_conflux_desktop')`
+  - Windows 开发链路已完成一次应急突围：Tailwind 编译已从 `@tailwindcss/vite` 回退到 `PostCSS + tailwindcss v3`，`npm run tauri:dev` 现通过 `vite --configLoader native --port 5173 --strictPort` 稳定启动，绕过了 `externalize-deps -> net use -> spawn EPERM` 的 dev 阻断
+  - 无边框桌面窗口已补上自定义标题栏与 `core:window` 权限注册，支持显式窗口拖拽、最小化、最大化与关闭
 
 ### `v2.0` 存储纪元
 

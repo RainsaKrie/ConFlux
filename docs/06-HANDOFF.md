@@ -94,6 +94,8 @@
 - 桌面壳层初始化已进入实现态：项目已新增 `src-tauri/`，并在 `package.json` 中补上 `tauri:dev / tauri:build`
 - 当前窗口壳层已配置为无边框 `Conflux` 桌面窗口，默认尺寸 `1280 x 800`
 - 前端与 Rust 之间已预埋极简 IPC 探针：在 Tauri 环境中会静默 `invoke('hello_conflux_desktop')`
+- Windows 下的 `tauri:dev` 已完成一次稳定性抢修：Tailwind 已切回 `PostCSS + tailwindcss v3`，Vite dev 改为 `--configLoader native --port 5173 --strictPort`，从而绕过 `spawn EPERM` 的配置加载死锁
+- 自定义无边框标题栏已进入实现态，并补齐 `core:window` 能力授权；当前桌面窗口应支持拖拽、最小化、最大化和关闭
 
 ### `v2.0`
 

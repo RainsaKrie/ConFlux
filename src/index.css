@@ -1,6 +1,9 @@
 ﻿@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap');
-@import "tailwindcss";
 @import "tippy.js/dist/tippy.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 :root {
   color-scheme: light;
@@ -14,14 +17,18 @@
 }
 
 html {
+  height: 100%;
   background: #f9f9fb;
   scroll-behavior: smooth;
+  overflow: hidden;
 }
 
 body {
+  height: 100%;
   margin: 0;
   min-width: 320px;
   background: #f9f9fb;
+  overflow: hidden;
 }
 
 * {
@@ -34,7 +41,8 @@ input {
 }
 
 #root {
-  min-height: 100vh;
+  height: 100%;
+  overflow: hidden;
 }
 
 .tiptap {

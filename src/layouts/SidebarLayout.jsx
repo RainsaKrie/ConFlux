@@ -4,6 +4,7 @@ import { Binary, Bot, CircleDot, Command, Compass, Settings, X } from 'lucide-re
 import { NavLink, Outlet, useNavigate, useSearchParams } from 'react-router-dom'
 import { MetadataOverviewPanel } from '../components/sidebar/MetadataOverviewPanel'
 import { RecentAiTasksPanel } from '../components/sidebar/RecentAiTasksPanel'
+import { WindowTitlebar } from '../components/layout/WindowTitlebar'
 import { buildPoolContext, buildPoolContextKey, encodePoolFilters, poolFiltersToTokens } from '../features/pools/utils'
 import { useTranslation } from '../i18n/I18nProvider'
 import { useFluxStore } from '../store/useFluxStore'
@@ -96,10 +97,12 @@ export function SidebarLayout() {
 
   return (
     <>
-      <div className="min-h-screen bg-[#F9F9FB] text-zinc-900">
-        <div className="mx-auto flex min-h-screen max-w-[1680px]">
-          <aside className="w-full max-w-[248px] border-r border-zinc-200 bg-white/95">
-            <div className="sticky top-0 flex min-h-screen flex-col px-5 py-6">
+      <div className="flex h-screen w-full flex-col overflow-hidden bg-zinc-50 text-zinc-900">
+        <WindowTitlebar />
+
+        <div className="flex w-full flex-1 overflow-hidden">
+          <aside className="w-64 shrink-0 overflow-y-auto border-r border-zinc-200/60 bg-white">
+            <div className="flex min-h-full flex-col px-5 py-6">
               <div className="flex items-center gap-3 rounded-2xl px-2 py-2">
                 <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-zinc-900 text-white">
                   <CircleDot className="h-4 w-4" />
@@ -243,9 +246,9 @@ export function SidebarLayout() {
             </div>
           </aside>
 
-          <main className="min-w-0 flex-1 px-6 py-6 lg:px-8">
+          <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
             {!hasAiConfig ? (
-              <div className="sticky top-0 z-50 -mx-6 -mt-6 mb-6 border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 lg:-mx-8">
+              <div className="shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                 <div className="flex items-center justify-between gap-4">
                   <span>{t('settings.missingApiBanner')}</span>
                   <button
@@ -259,7 +262,9 @@ export function SidebarLayout() {
               </div>
             ) : null}
 
-            <Outlet />
+            <div className="relative flex-1 overflow-y-auto p-6 md:p-8">
+              <Outlet />
+            </div>
           </main>
         </div>
       </div>
