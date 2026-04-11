@@ -19,7 +19,7 @@ Conflux 当前是一套纯前端 React MVP，技术栈为：
 
 - `React 19`
 - `Vite 8`
-- `Tailwind CSS 4`
+- `Tailwind CSS 3 + PostCSS`
 - `Zustand`
 - `TipTap`
 - `framer-motion`
@@ -235,6 +235,7 @@ type FluxBlock = {
   - 使用 Tauri Plugin Store（JSON）或 SQLite 替换浏览器 `localStorage`
   - 通过原生文件系统承载图片与附件，不再继续使用 `IndexedDB` 作为富媒体主方案
   - `v2.0.x` 已进入实现态：Zustand persist 已切换为 Tauri Store 异步适配，首启会从 legacy `localStorage` 无损迁移并落盘到 `conflux_universe.json`
+  - 当前前端适配已对齐 `createJSONStorage` 的字符串协议：Tauri 环境写入原生 Store，Web 环境自动回退到 `localStorage`
 - `v2.1`：`OS-Level Ergonomics`
   - 注册全局快捷键
   - 引入系统托盘与后台常驻宿主

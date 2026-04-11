@@ -241,6 +241,7 @@
   - 使用 Tauri Plugin Store（JSON）或 SQLite 替换浏览器 `localStorage`
   - 为 `fluxBlocks` 的异步落盘与迁移建立桌面原生主轴
   - `v2.0.x` 已进入实现态：Zustand persist 已切换为 Tauri Store 异步适配，首启会从 legacy `localStorage` 进行无损迁移并落盘到 `conflux_universe.json`
+  - 当前桌面端已完成真实落盘验证：`npm run tauri:dev` 下可在 `C:\Users\ROG\AppData\Roaming\com.conflux.desktop\conflux_universe.json` 看到 `flux_blocks_store` 与迁移后的笔记数据
 - `原生多媒体`
   - 直接接管剪贴板、拖拽与文件系统 API
   - 将图片与附件保存到本地隔离目录，如 `~/.conflux/media/`

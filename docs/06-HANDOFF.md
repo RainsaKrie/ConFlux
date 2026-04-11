@@ -107,8 +107,10 @@
 
 - 已完成 `Tauri Store` 插件注册与权限开启，桌面端可读写本地 `conflux_universe.json`
 - Zustand persist 已切换为异步 `Tauri Store` 适配，首启会从 legacy `localStorage` 自动迁移并落盘
+- 当前适配已与 `createJSONStorage` 对齐：读写阶段以 JSON 字符串与 Zustand 通信，避免对象/字符串协议错位
 - 写入已加入轻量防抖，避免高频持久化阻塞
 - 非 Tauri 环境下自动回退至 `localStorage`，保持 Web 调试不中断
+- 当前桌面端已验证真实文件落盘：`C:\Users\ROG\AppData\Roaming\com.conflux.desktop\conflux_universe.json` 已存在且包含 `flux_blocks_store`
 
 ## 5. 默认续开发协议
 

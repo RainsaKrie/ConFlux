@@ -11,8 +11,9 @@ const MAX_AI_TASKS = 12
 const STORE_SAVE_DEBOUNCE_MS = 800
 
 const INITIAL_LANGUAGE = getInitialLanguage()
+const isTauri = typeof window !== 'undefined' && Boolean(window.__TAURI_INTERNALS__)
 
-const tauriStore = new LazyStore('conflux_universe.json')
+const tauriStore = isTauri ? new LazyStore('conflux_universe.json') : null
 let pendingStoreSaveTimer = null
 let pendingStoreSavePromise = null
 let pendingStoreSaveResolve = null
@@ -23,13 +24,12 @@ function canUseLocalStorage() {
 
 function readLegacyStorage(key) {
   if (!canUseLocalStorage()) return null
-  const raw = window.localStorage.getItem(key)
-  return raw ? JSON.parse(raw) : null
+  return window.localStorage.getItem(key)
 }
 
 function writeLegacyStorage(key, value) {
   if (!canUseLocalStorage()) return
-  window.localStorage.setItem(key, JSON.stringify(value))
+  window.localStorage.setItem(key, value)
 }
 
 function removeLegacyStorage(key) {
@@ -38,6 +38,7 @@ function removeLegacyStorage(key) {
 }
 
 async function scheduleStoreSave() {
+  if (!tauriStore) return
   if (pendingStoreSavePromise) return pendingStoreSavePromise
 
   pendingStoreSavePromise = new Promise((resolve) => {
@@ -64,8 +65,10 @@ async function scheduleStoreSave() {
   return pendingStoreSavePromise
 }
 
-const tauriPersistStorage = {
+const hybridPersistStorage = {
   getItem: async (name) => {
+    if (!isTauri || !tauriStore) return readLegacyStorage(name)
+
     try {
       const value = await tauriStore.get(name)
 
@@ -73,21 +76,28 @@ const tauriPersistStorage = {
         const legacyData = readLegacyStorage(name)
         if (legacyData) {
           console.info('Detected legacy storage, migrating to Tauri Store.')
-          await tauriStore.set(name, legacyData)
+          const parsed = JSON.parse(legacyData)
+          await tauriStore.set(name, parsed)
           await tauriStore.save()
-          return legacyData
+          return JSON.stringify(parsed)
         }
       }
 
-      return value ?? null
+      return value ? JSON.stringify(value) : null
     } catch (error) {
       console.error('Tauri Store read failed, falling back to localStorage.', error)
       return readLegacyStorage(name)
     }
   },
   setItem: async (name, value) => {
+    if (!isTauri || !tauriStore) {
+      writeLegacyStorage(name, value)
+      return
+    }
+
     try {
-      await tauriStore.set(name, value)
+      const parsedValue = JSON.parse(value)
+      await tauriStore.set(name, parsedValue)
       await scheduleStoreSave()
       writeLegacyStorage(name, value)
     } catch (error) {
@@ -96,6 +106,11 @@ const tauriPersistStorage = {
     }
   },
   removeItem: async (name) => {
+    if (!isTauri || !tauriStore) {
+      removeLegacyStorage(name)
+      return
+    }
+
     try {
       await tauriStore.delete(name)
       await tauriStore.save()
@@ -490,7 +505,7 @@ export const useFluxStore = create(
     {
       name: 'flux_blocks_store',
       version: 3,
-      storage: createJSONStorage(() => tauriPersistStorage),
+      storage: createJSONStorage(() => hybridPersistStorage),
       migrate: (persistedState) => {
         const state = persistedState && typeof persistedState === 'object' ? persistedState : {}
 
