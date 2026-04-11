@@ -1,6 +1,7 @@
 ﻿import { useEffect, useMemo, useState } from 'react'
 import { EditorContent, ReactRenderer, useEditor } from '@tiptap/react'
 import Highlight from '@tiptap/extension-highlight'
+import Image from '@tiptap/extension-image'
 import Mention from '@tiptap/extension-mention'
 import Placeholder from '@tiptap/extension-placeholder'
 import StarterKit from '@tiptap/starter-kit'
@@ -24,6 +25,7 @@ import {
   Underline as UnderlineIcon,
 } from 'lucide-react'
 import { useTranslation } from '../../i18n/I18nProvider'
+import { isTauriRuntime, saveMedia } from '../../features/media/localMediaService'
 import { useFluxStore } from '../../store/useFluxStore'
 import { contentToPlainText } from '../../utils/blocks'
 import { AdaptiveLensNode } from './extensions/AdaptiveLensNode'
@@ -73,6 +75,74 @@ function insertAdaptiveLens(editor, range, block) {
       },
     ])
     .run()
+}
+
+function createImageFileName(file, fallbackLabel) {
+  if (typeof file.name === 'string' && file.name.trim()) {
+    return file.name
+  }
+
+  return fallbackLabel
+}
+
+function extractPasteImageFiles(event) {
+  const items = Array.from(event.clipboardData?.items ?? [])
+  return items
+    .filter((item) => item.type.startsWith('image/'))
+    .map((item) => item.getAsFile())
+    .filter(Boolean)
+}
+
+function extractDropImageFiles(event) {
+  return Array.from(event.dataTransfer?.files ?? []).filter((file) => file.type.startsWith('image/'))
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '')
+    reader.onerror = () => reject(reader.error ?? new Error('Failed to read image file.'))
+    reader.readAsDataURL(file)
+  })
+}
+
+async function resolveEditorImageSource(file) {
+  if (isTauriRuntime) {
+    const media = await saveMedia(file)
+    return media.src
+  }
+
+  return readFileAsDataUrl(file)
+}
+
+async function insertImageFiles(editor, files, insertPosition = null) {
+  if (!editor || files.length === 0) return true
+
+  if (typeof insertPosition === 'number') {
+    editor.chain().focus().setTextSelection(insertPosition).run()
+  } else {
+    editor.chain().focus().run()
+  }
+
+  for (const [index, file] of files.entries()) {
+    try {
+      const src = await resolveEditorImageSource(file)
+      editor
+        .chain()
+        .focus()
+        .setImage({
+          src,
+          alt: createImageFileName(file, `image-${index + 1}`),
+          title: createImageFileName(file, `image-${index + 1}`),
+        })
+        .run()
+    } catch (error) {
+      console.warn('Failed to insert image into editor.', error)
+    }
+  }
+
+  return true
 }
 
 function ToolbarButton({ icon: Icon, label, isActive, action }) {
@@ -396,6 +466,12 @@ export function FluxEditor({ initialContent = '', onChange, onEditorReady }) {
       }),
       TaskList,
       TaskItem.configure({ nested: true }),
+      Image.configure({
+        allowBase64: !isTauriRuntime,
+        HTMLAttributes: {
+          class: 'flux-editor-image',
+        },
+      }),
       Highlight.configure({ multicolor: false }),
       Underline,
       Placeholder.configure({
@@ -421,6 +497,27 @@ export function FluxEditor({ initialContent = '', onChange, onEditorReady }) {
     editorProps: {
       attributes: {
         class: 'tiptap min-h-[420px] max-w-none px-1 py-2',
+      },
+      handlePaste: (_view, event) => {
+        const imageFiles = extractPasteImageFiles(event)
+        if (imageFiles.length === 0) return false
+
+        event.preventDefault()
+        void insertImageFiles(editor, imageFiles)
+        return true
+      },
+      handleDrop: (view, event) => {
+        const imageFiles = extractDropImageFiles(event)
+        if (imageFiles.length === 0) return false
+
+        event.preventDefault()
+        const dropPosition = view.posAtCoords({
+          left: event.clientX,
+          top: event.clientY,
+        })
+
+        void insertImageFiles(editor, imageFiles, dropPosition?.pos ?? null)
+        return true
       },
     },
   })

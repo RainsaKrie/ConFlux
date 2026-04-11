@@ -80,6 +80,7 @@ Conflux 当前是一套纯前端 React MVP，技术栈为：
 - `src/features/search/hybridSearch.js`：向量快照构建、双路召回融合与离线实验入口
 - `src/features/search/vectorCacheService.js`：内存级向量快照缓存与异步预热
 - `src/features/metadata/`：补充元数据概览与轻量统计
+- `src/features/media/localMediaService.js`：桌面端媒体目录初始化、图片落盘与本地文件 URL 转换
 - `src/features/graph/`：图谱渲染、搜索、相机控制与常量
 - `src/features/pools/`：Pool 上下文与筛选工具
 - `src/store/useFluxStore.js`：全局状态、持久化、revision、Pool 事件与本地 AI 任务记录
@@ -239,6 +240,7 @@ type FluxBlock = {
 - `v2.1`：`OS-Level Ergonomics`
   - 注册全局快捷键
   - 引入系统托盘与后台常驻宿主
+  - `Local Media Engine` 已进入实现态：`FluxEditor` 会在 Tauri 环境下拦截粘贴/拖拽图片，借助 `plugin-fs` 将文件写入 `$APPDATA/media/`，再通过 `convertFileSrc()` 回填安全本地 URL；Web 环境则回退到 Data URL 插入策略
 - `v2.2`：`Advanced Views`
   - 在桌面底座稳定后再重启 `Infinite Canvas / Whiteboard`
   - 将高级属性治理与表格视图并入桌面数据视图层

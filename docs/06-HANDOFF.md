@@ -112,6 +112,19 @@
 - 非 Tauri 环境下自动回退至 `localStorage`，保持 Web 调试不中断
 - 当前桌面端已验证真实文件落盘：`C:\Users\ROG\AppData\Roaming\com.conflux.desktop\conflux_universe.json` 已存在且包含 `flux_blocks_store`
 
+### `v2.1`
+
+负责：
+
+- `Local Media Engine`
+
+当前进度：
+
+- Tauri 侧已接入 `plugin-fs`，并为 `$APPDATA/media/` 目录补上受限 scope
+- 应用启动时会确保 `C:\Users\ROG\AppData\Roaming\com.conflux.desktop\media\` 存在
+- `FluxEditor` 已接入图片粘贴/拖拽拦截：Tauri 下会把图片写入本地 `media/` 目录并通过安全本地 URL 插入编辑器
+- Web 环境保持降级策略：若非 Tauri，则回退为 Data URL 插入，保证浏览器版不崩溃
+
 ## 5. 默认续开发协议
 
 如果下次用户只说“继续”“看 docs 继续”“同步 docs 并推进”，默认按下面流程执行：

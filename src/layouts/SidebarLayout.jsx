@@ -5,6 +5,7 @@ import { NavLink, Outlet, useNavigate, useSearchParams } from 'react-router-dom'
 import { MetadataOverviewPanel } from '../components/sidebar/MetadataOverviewPanel'
 import { RecentAiTasksPanel } from '../components/sidebar/RecentAiTasksPanel'
 import { WindowTitlebar } from '../components/layout/WindowTitlebar'
+import { ensureMediaDirectory, isTauriRuntime } from '../features/media/localMediaService'
 import { buildPoolContext, buildPoolContextKey, encodePoolFilters, poolFiltersToTokens } from '../features/pools/utils'
 import { useTranslation } from '../i18n/I18nProvider'
 import { useFluxStore } from '../store/useFluxStore'
@@ -62,6 +63,21 @@ export function SidebarLayout() {
     return () => window.removeEventListener('storage', handleStorage)
   }, [])
 
+  useEffect(() => {
+    if (!isTauriRuntime) return undefined
+
+    let isMounted = true
+
+    ensureMediaDirectory().catch((error) => {
+      if (!isMounted) return
+      console.warn('Failed to initialize native media directory.', error)
+    })
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
   const handleConfigChange = (key, value) => {
     setConfig((current) => {
       const nextConfig = {
@@ -101,7 +117,7 @@ export function SidebarLayout() {
         <WindowTitlebar />
 
         <div className="flex w-full flex-1 overflow-hidden">
-          <aside className="w-64 shrink-0 overflow-y-auto border-r border-zinc-200/60 bg-white">
+          <aside className="scrollbar-hide flex w-64 shrink-0 flex-col overflow-y-auto border-r border-zinc-200/60 bg-white">
             <div className="flex min-h-full flex-col px-5 py-6">
               <div className="flex items-center gap-3 rounded-2xl px-2 py-2">
                 <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-zinc-900 text-white">

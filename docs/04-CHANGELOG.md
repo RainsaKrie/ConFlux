@@ -259,6 +259,10 @@
 - `系统托盘与静默守护`
   - 引入 Tray 常驻入口
   - 让后台轻量任务与词典预热脱离主窗口生命周期
+- `原生多媒体引擎 (Local Media Engine)`
+  - 已进入实现态：Tauri 侧已接入 `plugin-fs`，并为 `$APPDATA/media/` 开放受限读写 scope
+  - `FluxEditor` 现会在 Tauri 环境下拦截粘贴/拖拽图片，阻断 Base64 内联膨胀，转而将图片物理写入本地 `media/` 目录后再回填安全 URL
+  - Web 环境保持降级策略：若非 Tauri，则回退为 Data URL 插入，确保浏览器版不崩溃
 
 ### `v2.2` 视图扩张期
 
