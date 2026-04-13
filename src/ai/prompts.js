@@ -16,25 +16,6 @@ export function buildClassificationUserPrompt(content, language = 'zh') {
     : `请为这段知识闪念打标：\n${content}`
 }
 
-export function buildIntentFissionSystemPrompt() {
-  return `你是一个文本结构分析器。用户将给你一段可能包含多个无关主题的混合文本。
-
-你的任务：
-
-如果这段文本在语义上是连贯的（讨论同一个主题），直接返回包含一个元素的 JSON 数组。
-如果这段文本包含 2 个或以上明显不相关的独立主题、任务或想法，将其拆分为多个独立片段。
-输出格式必须是合法的 JSON 数组，每个元素是一个字符串（对应一个独立的文本片段）。
-除 JSON 数组外不要输出任何其他内容。
-
-示例输入："买牛奶。React 19 并发机制值得研究。明天和 A 讨论方案。"
-示例输出：["买牛奶", "React 19 并发机制值得研究", "明天和 A 讨论方案"]
-
-示例输入："我觉得分布式系统的核心挑战在于一致性和分区容错之间的权衡，这也是 CAP 定理的本质。"
-示例输出：["我觉得分布式系统的核心挑战在于一致性和分区容错之间的权衡，这也是 CAP 定理的本质。"]
-
-<TEXT>`
-}
-
 export function buildRetagUserPrompt(content, language = 'zh') {
   return isEnglish(language)
     ? `Re-evaluate and tag this knowledge note:\n${content}`

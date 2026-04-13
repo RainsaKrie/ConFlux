@@ -32,7 +32,7 @@ Conflux 是一个纯前端的实验项目，想认真讨论一件事：如果不
 - `react-force-graph-2d` 负责图谱投影与语义缩放
 - 整条智能链路都遵守“本地预筛 -> 用户确认 -> 精确调用模型”的约束
 
-当前的 Conflux 仍然是纯浏览器系统。`v1.0` 没有后端、没有托管中继，也没有内建同步层。
+当前的 Conflux 同时支持浏览器运行和 `Tauri v2` 桌面壳层。`v1.0` 依然没有后端、没有托管中继，也没有内建同步层；桌面端使用 `Tauri Store` 落盘，Web 端则自动回退到浏览器存储。
 
 ## 核心特性
 
@@ -60,7 +60,7 @@ Conflux 的数据核心是扁平的 `fluxBlocks`，通过 `domain / format / pro
 
 - React 19
 - Vite 8
-- Tailwind CSS 4
+- Tailwind CSS 3
 - Zustand
 - TipTap
 - react-force-graph-2d
@@ -102,16 +102,16 @@ npm run dev
 
 ## BYOK 与数据安全说明
 
-Conflux 采用本地优先的 BYOK（Bring Your Own Key）方式。所有笔记数据默认都保存在浏览器的 `localStorage` 中，不经过项目方的任何第三方服务器。
+Conflux 采用本地优先的 BYOK（Bring Your Own Key）方式。所有笔记数据都默认保存在本地：桌面端写入 `Tauri Store` 的 `conflux_universe.json`，浏览器环境则回退到 `localStorage`。数据不会经过项目方的任何第三方服务器。
 
 API Key 只会用于前端直连你自己配置的大模型接口，不会被转发到额外的中转后端。这种方式更适合个人设备；如果你在公共电脑或共享设备上使用，建议结束后清除浏览器数据。
 
 ## 演进路线
 
-- `v1.1`：混合语义召回与输入意图拆分
+- `v1.1`：混合语义召回
 - `v1.2`：本地图片支持与编辑器大纲导航
 - `v1.3`：白板视图与批量属性管理
-- `v2.0`：桌面端（Tauri）与本地数据库迁移
+- `v2.0`：更完整的桌面端持久化、多媒体落盘与本地优先存储边界
 
 欢迎社区对这些方向提出建议，也欢迎直接指出当前实现中的问题和边界。
 
@@ -123,7 +123,7 @@ API Key 只会用于前端直连你自己配置的大模型接口，不会被转
 |---|---|
 | [01-PRD.md](./01-PRD.md) | 产品定义、核心对象、使用场景与完整版本路线图（v1.1 -> v2.0） |
 | [02-ARCHITECTURE.md](./02-ARCHITECTURE.md) | 技术基线、模块结构、数据模型与核心处理链路 |
-| [03-DATABASE.md](./03-DATABASE.md) | 当前 localStorage 存储结构、实体模型、线程约定与未来迁移预案 |
+| [03-DATABASE.md](./03-DATABASE.md) | 当前混合持久化结构（`Tauri Store` + Web 回退）、实体模型、线程约定与未来迁移预案 |
 | [04-CHANGELOG.md](./04-CHANGELOG.md) | 版本历史与里程碑追踪的唯一真相源 |
 | [05-MASTER-DIRECTIVE.md](./05-MASTER-DIRECTIVE.md) | 产品纪律：本地优先漏斗、零压迫 UI、双向知识生长 |
 | [06-HANDOFF.md](./06-HANDOFF.md) | 开发交接指南，用于在任何新会话中快速恢复项目状态 |

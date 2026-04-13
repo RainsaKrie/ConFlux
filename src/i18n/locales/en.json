@@ -88,8 +88,10 @@
     "retagTaskFailed": "Tagging failed: {{message}}",
     "retagFailed": "AI re-evaluation failed: {{message}}",
     "recommendationCta": "1 Insight found",
-    "recommendationCtaEntities": "Found 1 deep link",
-    "recommendationCtaSemantic": "AI found 1 latent link",
+    "recommendationCtaEntities": "Found 1 related note",
+    "recommendationCtaSemantic": "Found 1 latent link",
+    "recommendationCtaBoth": "Found 1 strong link",
+    "recommendationCtaFallback": "Found 1 conservative match",
     "recommendationAria": "Open suggestion: {{title}}",
     "recommendationEmptyAria": "No insight found",
     "assimilationNeedRecommendation": "Open a suggested note first, then update the source note.",
@@ -115,9 +117,36 @@
     "assimilate": "Assimilate back to source",
     "currentParagraph": "Current paragraph",
     "recommendationReason": {
-      "entities": "Matched entities: {{terms}}",
-      "semantic": "🌌 Semantic pull",
-      "both": "⚡ Entity + semantic confirmation"
+      "entities": "Matched terms: {{terms}}",
+      "semantic": "Semantic proximity",
+      "both": "Entity + semantic confirmation"
+    },
+    "recommendationEvidence": {
+      "entities": "This candidate matched {{terms}} terms and passed the {{strategy}} lexicon check.",
+      "semantic": "This is a semantic-only candidate with a score of {{score}}, above the trigger threshold {{threshold}}.",
+      "both": "This candidate matched {{terms}} terms and also reached a semantic score of {{score}}."
+    },
+    "recommendationStrategy": {
+      "strict": "strict",
+      "relaxed": "relaxed"
+    },
+    "recommendationPath": {
+      "hybrid": "Hybrid retrieval",
+      "lexicon-only": "Lexicon candidate"
+    },
+    "recommendationFallback": {
+      "cacheIdle": "This suggestion is currently using the lexicon-only path because the semantic cache is not ready yet.",
+      "cache-idle": "This suggestion is currently using the lexicon-only path because the semantic cache is not ready yet.",
+      "cacheWarming": "This suggestion is currently using the lexicon-only path while the semantic cache warms up in the background.",
+      "cache-warming": "This suggestion is currently using the lexicon-only path while the semantic cache warms up in the background.",
+      "cacheFailed": "This suggestion is currently using the lexicon-only path because semantic cache initialization failed or resources were insufficient.",
+      "cache-failed": "This suggestion is currently using the lexicon-only path because semantic cache initialization failed or resources were insufficient.",
+      "semanticNoHit": "The lexicon candidate passed, but semantic reranking did not produce a stronger result this time.",
+      "semantic-no-hit": "The lexicon candidate passed, but semantic reranking did not produce a stronger result this time.",
+      "semanticUnavailable": "The semantic path is currently unavailable, so this result only reflects lexicon matching.",
+      "semantic-unavailable": "The semantic path is currently unavailable, so this result only reflects lexicon matching.",
+      "semanticException": "The semantic path failed during this run, so the system fell back to lexicon matching.",
+      "semantic-exception": "The semantic path failed during this run, so the system fell back to lexicon matching."
     },
     "localSummary": "Local summary",
     "versionHistory": "Revision history",

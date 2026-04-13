@@ -67,6 +67,17 @@
 - `v1.0.0 Release Candidate`：当前基线已完成品牌、文案、首启引导、数据主权边界与构建验收收口，可作为 GitHub 开源发布候选包
 - 抽出 block 默认维度与系统来源标签 helper，收掉 `Editor` / `Feed` 内部重复的 `未分类 / 碎片 / 速记 / AI 生成` 字面量，降低后续维护噪音
 - 修正文档中仍残留的旧 `package.json 0.0.0` 描述，并把仓库元数据地址同步到当前 `ConFlux.git`
+- 移除 `Quick Capture` 中残留的 `Intent Fission` 调用与相关 Prompt/helper，确保普通输入继续遵守“极简入库 + 现有打标/切块”基线
+- 将 `Hybrid Search` 的向量模块改为按需动态加载，避免 `@xenova/transformers` 继续提前压进 `/write` 首屏主 chunk
+- 同步 `README`、`README_ZH`、存储文档与桌面配置元数据到当前代码真相：`Tauri Store + localStorage fallback`、`Tailwind CSS 3`、`Tauri v2` 桌面壳层与 `1.0.0` 版本元数据
+- 为 `verify:phantom` 补充真实项目语境的推荐回归样本，并将多词高置信命中的 Fuse 二次校验阈值做轻度放宽，减少真实段落被边界门槛误杀
+- 将 `vectorCache` 从“任意 block 波动后整库重建”收口为“优先复用未变化 entry、只重算变更项”的增量预热策略，降低 `v1.1` 阶段的大库重建压力
+- 将推荐链路的核心参数收束到统一 policy：Fuse 严格/放宽阈值、语义阈值、召回上限、lexicon/semantic/both 打分权重不再散落在多个模块中
+- 为推荐结果补上 `recommendationPath / fallbackReason` 元信息，并在 `Peek Drawer` 中低存在感展示“为何本次回退到词典链路”的说明，显式化 `v1.1` 的失败回退边界
+- 统一 `/write` 右下角推荐 CTA 与 `Peek Drawer` 的状态表达：现在会区分 `entities / semantic / both / fallback` 四种推荐语义，并用更克制的文案与 `混合召回 / 词典候选` 路径徽标保持入口与抽屉一致
+- 抽出共享的 `recommendationPresentation` 状态 helper，收掉 `EditorPage / PeekDrawer` 中重复的推荐语义判定；同时把“无向量快照时应回退到 `lexicon-only` 且标记 `cache-warming`”补进 `verify:phantom` 回归
+- 将 `Hybrid Search` 的语义/词典合并排序抽成纯函数，并为 `verify:phantom` 新增两类真实边界：`both` 双命中应优先收敛到同一块，以及较弱语义候选不应压过高置信 `entities` 命中
+- 在 `Peek Drawer` 中补上推荐解释层：现在会明确显示“词项命中数量 + strict/relaxed 校验”或“semantic score 已越过阈值”，让纯语义候选不再只靠颜色表达自身置信度
 
 ## 3. 回顾性里程碑
 
@@ -178,7 +189,7 @@
 
 ### `v1.1` 智能攻坚期
 
-定位：`Semantic & Fission`
+定位：`Semantic Retrieval`
 
 负责事项：
 
@@ -191,6 +202,44 @@
 - `意图裂变器 (Intent Fission)`
   - 该方向已被产品决策正式取消，不再作为 `v1.1` 的继续推进项
   - 当前 Quick Capture 保持“极简入库 + 现有打标/切块”策略，不再继续增加主题分离链路的复杂度与延迟
+
+#### `v1.1` 当前未完成开发清单
+
+要让项目从“已经接入 Hybrid Search”真正进入 `v1.1`，还需要把下面几项收口成默认主链，而不是停留在基建存在态：
+
+1. `推荐质量基线`
+   - 补充更接近真实笔记场景的 fixture，而不只保留离线靶场样本。
+   - 明确近义表达、缩写、中英混写、弱相关噪音下的命中预期。
+   - 为“应该命中 / 不应该命中”建立更稳定的回归样本集。
+2. `阈值与排序策略`
+   - 收束 `semanticThreshold`、lexicon bonus、both bonus 等核心参数。
+   - 让推荐结果具备最小可解释性：为什么命中、为什么没命中、为什么排在前面。
+   - 避免当前仍偏经验值的排序策略长期漂移。
+3. `vectorCache 生命周期`
+   - 明确何时预热、何时失效、何时回退。
+   - 控制大库下的全量重建频率，避免每次 block 波动都引发重型预热。
+   - 逐步补向更细粒度的缓存更新，而不是长期依赖整库重算。
+4. `UI 收口`
+   - 继续收敛 `entities / semantic / both` 三类命中的提示强度与文案。
+   - 保持纯语义命中是“潜在关联”而不是“确定关系”的低压迫表达。
+   - 确保推荐浮层与 Drawer 的语义一致，不制造额外认知负担。
+5. `失败回退体验`
+   - 明确 Wasm 模型未初始化、资源不足、网络加载失败时的回退路径。
+   - 保证异常情况下始终静默退回到纯词典推荐，不阻断写作。
+   - 把回退边界写进文档，而不只体现在代码里。
+6. `验证与文档`
+   - 扩充 `verify:phantom` 与相关脚本，覆盖更多真实推荐边界。
+   - 在 docs 中把 `v1.1` 结案标准写实，避免继续使用“已接入”替代“已收口”。
+
+#### `v1.1` 结案标准
+
+满足以下条件后，才适合把当前阶段正式推进到 `v1.1`：
+
+- `Hybrid Search` 已成为 `/write` 中稳定、默认、可回退的推荐主链。
+- `entities / semantic / both` 三类归因结果都具备可解释性与稳定 UI 表达。
+- Wasm 模型不可用时，系统会无感回退到纯词典推荐，不破坏当前写作体验。
+- 推荐链路已经具备一组可信的真实样本回归验证，而不只依赖离线演示靶场。
+- 文档、代码、验证命令三者口径一致，不再出现“文档已宣布完成、代码仍在实验态”的漂移。
 
 ### `v1.2` 创作体验期
 
@@ -238,7 +287,7 @@
 负责事项：
 
 - `引擎置换`
-  - 使用 Tauri Plugin Store（JSON）或 SQLite 替换浏览器 `localStorage`
+  - 以 Tauri Plugin Store（JSON，当前实现态）替换浏览器 `localStorage`，并为后续 SQLite 迁移保留空间
   - 为 `fluxBlocks` 的异步落盘与迁移建立桌面原生主轴
   - `v2.0.x` 已进入实现态：Zustand persist 已切换为 Tauri Store 异步适配，首启会从 legacy `localStorage` 进行无损迁移并落盘到 `conflux_universe.json`
   - 当前桌面端已完成真实落盘验证：`npm run tauri:dev` 下可在 `C:\Users\ROG\AppData\Roaming\com.conflux.desktop\conflux_universe.json` 看到 `flux_blocks_store` 与迁移后的笔记数据

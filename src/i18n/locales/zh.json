@@ -88,8 +88,10 @@
     "retagTaskFailed": "标签重审失败：{{message}}",
     "retagFailed": "AI 重新审视失败：{{message}}",
     "recommendationCta": "发现相关节点",
-    "recommendationCtaEntities": "发现 1 个深层关联",
-    "recommendationCtaSemantic": "AI 发现 1 个潜藏关联",
+    "recommendationCtaEntities": "发现 1 个相关节点",
+    "recommendationCtaSemantic": "发现 1 个潜在关联",
+    "recommendationCtaBoth": "发现 1 个强关联",
+    "recommendationCtaFallback": "发现 1 个保守关联",
     "recommendationAria": "打开智能推荐候选：{{title}}",
     "recommendationEmptyAria": "暂无智能推荐",
     "assimilationNeedRecommendation": "请先从智能推荐打开候选笔记，再执行原文更新。",
@@ -115,9 +117,36 @@
     "assimilate": "更新至原始笔记",
     "currentParagraph": "当前段落",
     "recommendationReason": {
-      "entities": "命中实体: {{terms}}",
-      "semantic": "🌌 语义引力",
-      "both": "⚡ 实体与语义双重确认"
+      "entities": "词项命中: {{terms}}",
+      "semantic": "语义接近",
+      "both": "词项与语义同时命中"
+    },
+    "recommendationEvidence": {
+      "entities": "当前基于 {{terms}} 个词项命中，并通过 {{strategy}} 词典校验。",
+      "semantic": "当前为语义候选，语义分数 {{score}}，高于触发阈值 {{threshold}}。",
+      "both": "当前同时命中 {{terms}} 个词项，语义分数 {{score}}。"
+    },
+    "recommendationStrategy": {
+      "strict": "严格",
+      "relaxed": "放宽"
+    },
+    "recommendationPath": {
+      "hybrid": "混合召回",
+      "lexicon-only": "词典候选"
+    },
+    "recommendationFallback": {
+      "cacheIdle": "当前仍沿用词典推荐链路，语义缓存尚未建立。",
+      "cache-idle": "当前仍沿用词典推荐链路，语义缓存尚未建立。",
+      "cacheWarming": "当前仍沿用词典推荐链路，语义缓存正在后台预热。",
+      "cache-warming": "当前仍沿用词典推荐链路，语义缓存正在后台预热。",
+      "cacheFailed": "当前仍沿用词典推荐链路，语义缓存初始化失败或资源不足。",
+      "cache-failed": "当前仍沿用词典推荐链路，语义缓存初始化失败或资源不足。",
+      "semanticNoHit": "词典候选已通过，但这次语义重排没有提供更强结果。",
+      "semantic-no-hit": "词典候选已通过，但这次语义重排没有提供更强结果。",
+      "semanticUnavailable": "语义链路当前不可用，因此本次只展示词典命中结果。",
+      "semantic-unavailable": "语义链路当前不可用，因此本次只展示词典命中结果。",
+      "semanticException": "语义链路本次执行失败，系统已自动回退到词典推荐。",
+      "semantic-exception": "语义链路本次执行失败，系统已自动回退到词典推荐。"
     },
     "localSummary": "本地摘要",
     "versionHistory": "版本历史",

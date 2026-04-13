@@ -42,7 +42,7 @@ The current baseline follows the architecture described in [docs/02-ARCHITECTURE
 - `react-force-graph-2d` for graph projection and semantic zoom
 - a strict funnel of `local prefilter -> user confirmation -> precise model call`
 
-Conflux currently runs as a browser-only system. There is no backend, no hosted relay, and no built-in sync layer in `v1.0`.
+Conflux currently runs both in the browser and inside a `Tauri v2` desktop shell. There is still no backend, no hosted relay, and no built-in sync layer in `v1.0`; desktop persistence uses `Tauri Store`, while the web runtime falls back to browser storage.
 
 ## Key Experiments
 
@@ -68,7 +68,7 @@ The graph view is not a decorative afterthought. It uses `react-force-graph-2d` 
 - Vite 8
 - Zustand (Persist)
 - TipTap (Custom Node View)
-- Tailwind CSS 4
+- Tailwind CSS 3
 - Framer Motion
 - Fuse.js
 - react-force-graph-2d
@@ -118,7 +118,7 @@ npm run verify:phantom
 
 Conflux follows a local-first BYOK model:
 
-- note data is stored in browser `localStorage`
+- note data is stored locally: desktop builds use `Tauri Store` (`conflux_universe.json` under the app data directory), while the web runtime falls back to browser `localStorage`
 - model credentials are stored locally in the browser unless injected through local environment variables at build time
 - the project ships with no default backend and no hosted proxy
 - users should treat this repository as an experimental personal tool, not a hardened enterprise system
@@ -132,7 +132,7 @@ The current roadmap is intentionally incremental and is derived from the `docs/`
 - `v1.1`: embedded hybrid retrieval and intent fission for mixed-input decomposition
 - `v1.2`: `IndexedDB`-backed local media support and richer longform ergonomics
 - `v1.3`: whiteboard exploration and batch-oriented metadata management
-- `v2.0`: `Tauri` desktop packaging, local `SQLite`, and more durable local-first storage boundaries
+- `v2.0`: deeper native persistence, local media handling, and more durable desktop-first storage boundaries
 
 Community guidance, critique, and architectural feedback are genuinely welcome.
 
@@ -144,7 +144,7 @@ The `docs/` directory contains the full product and engineering context behind C
 |---|---|
 | [01-PRD.md](./docs/01-PRD.md) | Product requirements, core objects, scenarios, and the complete version roadmap (v1.1 -> v2.0) |
 | [02-ARCHITECTURE.md](./docs/02-ARCHITECTURE.md) | Technical baseline, module structure, data model, and the main processing pipelines |
-| [03-DATABASE.md](./docs/03-DATABASE.md) | Current localStorage schema, entity model, thread conventions, and future migration plan |
+| [03-DATABASE.md](./docs/03-DATABASE.md) | Current hybrid persistence schema (`Tauri Store` + web fallback), entity model, thread conventions, and migration plan |
 | [04-CHANGELOG.md](./docs/04-CHANGELOG.md) | The single source of truth for version history and milestone tracking |
 | [05-MASTER-DIRECTIVE.md](./docs/05-MASTER-DIRECTIVE.md) | Core product discipline: local-first funnel, zero-pressure UI, and bi-directional growth |
 | [06-HANDOFF.md](./docs/06-HANDOFF.md) | Developer handoff guide for resuming work in any future session |

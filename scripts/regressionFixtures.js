@@ -45,6 +45,18 @@ export const macroChunkStressInput = [
 
 export const oversizedRunOnInput = ['# 垃圾段落压测', '', overflowGarbageParagraph].join('\n')
 export const mixedLanguageParagraph = '我使用了React19的新特性进行构建验证，并继续检查并发渲染链路是否稳定。'
+export const realWorldHitParagraph = [
+  '今晚先复核 Conflux 在 Tauri Store 迁移后的 conflux_universe.json 结构，',
+  '确认桌面持久化回退没有把旧字段写坏，再决定是否继续做发布验收。',
+].join('')
+export const realWorldMissParagraph = [
+  '今天只整理 README、贡献指南和许可证说明，',
+  '重点是文案措辞统一，没有碰应用功能、交互行为或底层实现。',
+].join('')
+export const entityPriorityParagraph = [
+  '今天只复核本地媒体落盘排查这条链路，重点检查 plugin-fs、media目录 和媒体落盘稳定性，',
+  '不去碰图谱权重或关系搜索参数。',
+].join('')
 
 export function buildRecommendationFixtureBlocks() {
   const decoys = Array.from({ length: 36 }, (_, index) => ({
@@ -98,6 +110,59 @@ export function buildMixedLanguageFixtureBlocks() {
         domain: ['工程实践'],
         format: ['排查记录'],
         project: ['CI'],
+        stage: [],
+        source: [],
+      },
+    },
+  ]
+}
+
+export function buildRealWorldRecommendationFixtureBlocks() {
+  return [
+    {
+      id: 'desktop_migration_anchor',
+      title: 'Tauri Store 迁移复核',
+      content: '复核 conflux_universe.json 的结构、字段迁移、桌面持久化回退与版本兼容。',
+      dimensions: {
+        domain: ['桌面持久化', '迁移校验'],
+        format: ['排查记录'],
+        project: ['Conflux', 'Tauri Store', 'conflux_universe'],
+        stage: [],
+        source: [],
+      },
+    },
+    {
+      id: 'media_pipeline_anchor',
+      title: '本地媒体落盘排查',
+      content: '检查图片拖拽、粘贴落盘、plugin-fs scope 与 media 目录生成是否稳定。',
+      dimensions: {
+        domain: ['媒体落盘', '拖拽粘贴'],
+        format: ['排查记录'],
+        project: ['plugin-fs', 'media目录'],
+        stage: [],
+        source: [],
+      },
+    },
+    {
+      id: 'graph_decoy',
+      title: 'Graph 权重调参记录',
+      content: '只讨论图谱关系权重、节点间距和搜索体验，不涉及桌面存储。',
+      dimensions: {
+        domain: ['图谱调参'],
+        format: ['实验记录'],
+        project: ['Graph'],
+        stage: [],
+        source: [],
+      },
+    },
+    {
+      id: 'docs_decoy',
+      title: '文档语气统一整理',
+      content: '只处理 README、贡献指南和开源说明中的措辞统一。',
+      dimensions: {
+        domain: ['文档维护'],
+        format: ['维护记录'],
+        project: ['README'],
         stage: [],
         source: [],
       },

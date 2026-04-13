@@ -1,13 +1,23 @@
 ﻿import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { performance } from 'node:perf_hooks'
-import { buildContextRecommendationEngine, findContextRecommendation } from '../src/features/recommendation/contextRecommendation.js'
+import {
+  buildContextRecommendationEngine,
+  findContextRecommendation,
+  findHybridContextRecommendation,
+} from '../src/features/recommendation/contextRecommendation.js'
+import { resolveRecommendationUiState } from '../src/features/recommendation/recommendationPresentation.js'
+import { mergeHybridSearchResults } from '../src/features/search/hybridSearch.js'
 import {
   buildMixedLanguageFixtureBlocks,
+  buildRealWorldRecommendationFixtureBlocks,
   buildRecommendationFixtureBlocks,
+  entityPriorityParagraph,
   macroChunkStressInput,
   mixedLanguageParagraph,
   noisyLexiconParagraph,
+  realWorldHitParagraph,
+  realWorldMissParagraph,
   oversizedRunOnInput,
 } from './regressionFixtures.js'
 
@@ -143,12 +153,150 @@ function verifyMixedLanguageBoundary() {
   }
 }
 
+function verifyRealWorldRecommendationBoundary() {
+  const blocks = buildRealWorldRecommendationFixtureBlocks()
+  const engine = buildContextRecommendationEngine(blocks)
+
+  const hitResult = findContextRecommendation({
+    activePoolContext: null,
+    engine,
+    paragraph: realWorldHitParagraph,
+  })
+
+  assert(hitResult?.block?.id === 'desktop_migration_anchor', '真实项目语境段落没有命中桌面迁移笔记。')
+  assert(
+    hitResult.matchedTerms.includes('Tauri Store') || hitResult.matchedTerms.includes('桌面持久化'),
+    '真实项目语境命中结果没有保留关键迁移词元。',
+  )
+
+  const missResult = findContextRecommendation({
+    activePoolContext: null,
+    engine,
+    paragraph: realWorldMissParagraph,
+  })
+
+  assert(
+    !missResult
+      || !['desktop_migration_anchor', 'media_pipeline_anchor'].includes(missResult.block?.id),
+    '纯文档维护段落被错误关联到了桌面存储或媒体链路。',
+  )
+
+  return {
+    hitBlockId: hitResult.block.id,
+    hitTerms: hitResult.matchedTerms.join(', '),
+    missBlockId: missResult?.block?.id ?? 'none',
+  }
+}
+
+async function verifyFallbackBoundary() {
+  const blocks = buildRealWorldRecommendationFixtureBlocks()
+  const engine = buildContextRecommendationEngine(blocks)
+
+  const fallbackResult = await findHybridContextRecommendation({
+    activeBlockId: null,
+    activePoolContext: null,
+    engine,
+    paragraph: realWorldHitParagraph,
+    vectorCacheStatus: 'warming',
+    vectorSnapshot: [],
+  })
+
+  assert(fallbackResult?.block?.id === 'desktop_migration_anchor', '回退链路没有保住原有词典候选。')
+  assert(fallbackResult.recommendationPath === 'lexicon-only', '无向量快照时没有保持 lexicon-only 路径。')
+  assert(fallbackResult.fallbackReason === 'cache-warming', '无向量快照时没有返回预期回退原因。')
+  assert(resolveRecommendationUiState(fallbackResult) === 'fallback', '回退结果没有映射到 fallback UI 状态。')
+
+  return {
+    blockId: fallbackResult.block.id,
+    fallbackReason: fallbackResult.fallbackReason,
+    recommendationPath: fallbackResult.recommendationPath,
+  }
+}
+
+function verifyBothBoundary() {
+  const blocks = buildRealWorldRecommendationFixtureBlocks()
+  const engine = buildContextRecommendationEngine(blocks)
+  const lexiconResult = findContextRecommendation({
+    activePoolContext: null,
+    engine,
+    paragraph: realWorldHitParagraph,
+  })
+
+  assert(lexiconResult?.block?.id === 'desktop_migration_anchor', '双命中样本没有先命中预期词典候选。')
+
+  const semanticHits = [
+    {
+      block: blocks.find((block) => block.id === 'desktop_migration_anchor'),
+      blockId: 'desktop_migration_anchor',
+      similarity: 0.72,
+      title: 'Tauri Store 迁移复核',
+    },
+    {
+      block: blocks.find((block) => block.id === 'graph_decoy'),
+      blockId: 'graph_decoy',
+      similarity: 0.69,
+      title: 'Graph 权重调参记录',
+    },
+  ]
+
+  const merged = mergeHybridSearchResults(semanticHits, [lexiconResult], { limit: 2 })
+  const topHit = merged[0]
+
+  assert(topHit?.blockId === 'desktop_migration_anchor', '双命中结果没有把同块候选排到最前。')
+  assert(topHit.reason === 'both', '双命中结果没有标记为 both。')
+  assert(resolveRecommendationUiState(topHit) === 'both', '双命中结果没有映射到 both UI 状态。')
+
+  return {
+    blockId: topHit.blockId,
+    reason: topHit.reason,
+    score: topHit.score,
+  }
+}
+
+function verifyEntityPriorityBoundary() {
+  const blocks = buildRealWorldRecommendationFixtureBlocks()
+  const engine = buildContextRecommendationEngine(blocks)
+  const lexiconResult = findContextRecommendation({
+    activePoolContext: null,
+    engine,
+    paragraph: entityPriorityParagraph,
+  })
+
+  assert(lexiconResult?.block?.id === 'media_pipeline_anchor', '词典优先样本没有命中本地媒体候选。')
+
+  const semanticHits = [
+    {
+      block: blocks.find((block) => block.id === 'graph_decoy'),
+      blockId: 'graph_decoy',
+      similarity: 0.67,
+      title: 'Graph 权重调参记录',
+    },
+  ]
+
+  const merged = mergeHybridSearchResults(semanticHits, [lexiconResult], { limit: 2 })
+  const topHit = merged[0]
+
+  assert(topHit?.blockId === 'media_pipeline_anchor', '较弱语义候选错误压过了词典命中。')
+  assert(topHit.reason === 'entities', '词典优先样本没有保持 entities 归因。')
+  assert(resolveRecommendationUiState(topHit) === 'entities', '词典优先样本没有映射到 entities UI 状态。')
+
+  return {
+    blockId: topHit.blockId,
+    reason: topHit.reason,
+    score: topHit.score,
+  }
+}
+
 async function main() {
   const documentChunker = await loadDocumentChunkerModule()
   const macro = verifyMacroChunking(documentChunker)
   const overflow = verifyOverflowChunking(documentChunker)
   const lexicon = verifyLexiconNoise()
   const mixedLanguage = verifyMixedLanguageBoundary()
+  const realWorld = verifyRealWorldRecommendationBoundary()
+  const fallback = await verifyFallbackBoundary()
+  const both = verifyBothBoundary()
+  const entityPriority = verifyEntityPriorityBoundary()
 
   console.log('verify:phantom')
   console.log(`PASS macro-chunking -> ${macro.chunkCount} chunks, longest ${macro.longestChunk}/${documentChunker.MAX_SEMANTIC_CHUNK_LENGTH}`)
@@ -157,6 +305,10 @@ async function main() {
   console.log(`PASS lexicon-filter -> ${lexicon.keptTerms}`)
   console.log(`PASS lexicon-stress -> ${lexicon.matchedTerms} in ${lexicon.elapsedMs.toFixed(2)}ms`)
   console.log(`PASS mixed-language -> ${mixedLanguage.matchedTerms}`)
+  console.log(`PASS real-world-boundary -> ${realWorld.hitBlockId} via ${realWorld.hitTerms}; miss=${realWorld.missBlockId}`)
+  console.log(`PASS fallback-boundary -> ${fallback.blockId} via ${fallback.fallbackReason}, path=${fallback.recommendationPath}`)
+  console.log(`PASS both-boundary -> ${both.blockId} reason=${both.reason}, score=${both.score}`)
+  console.log(`PASS entities-priority -> ${entityPriority.blockId} reason=${entityPriority.reason}, score=${entityPriority.score}`)
 }
 
 try {

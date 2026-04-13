@@ -10,7 +10,13 @@
 
 版本事实以 [`04-CHANGELOG.md`](./04-CHANGELOG.md) 为准。
 
-## 2. 当前本地存储键
+## 2. 当前持久化键与宿主
+
+Conflux 当前使用的是一套混合持久化模型：
+
+- 在 `Tauri` 桌面环境下，Zustand persist 会优先写入 `Tauri Store` 的 `conflux_universe.json`
+- 在纯 Web 调试环境下，会自动回退到浏览器 `localStorage`
+- 当桌面端首次检测到 legacy `localStorage` 中已有旧数据时，会自动迁移到 `Tauri Store`
 
 ### `flux_blocks_store`
 
@@ -25,7 +31,7 @@
     "recentAiTasks": [],
     "recentPoolEvents": []
   },
-  "version": 2
+  "version": 3
 }
 ```
 
@@ -37,6 +43,8 @@
 
 说明：
 
+- 在桌面端，该结构会以 JSON 对象形式保存在 `conflux_universe.json` 的 `flux_blocks_store` 键下。
+- 在 Web 环境中，该结构仍会通过 `localStorage.flux_blocks_store` 保存为 JSON 字符串。
 - `peekBlockId` 这类纯 UI 状态不进入持久化层。
 - `fluxBlocks[].revisions[]` 已成为正式的版本历史承载结构。
 - `recentAiTasks` 只承担本地任务回看职责，不等于真正的后台任务队列。
@@ -171,16 +179,17 @@ Conflux 当前不会把 block 关系固化成单独表，而是按需推导：
 
 优点：
 
-- 纯前端即可验证产品闭环
+- Web 与桌面壳层共用同一套状态模型
 - 本地响应快，开发迭代轻
 - BYOK 不经过平台后端，更符合当前隐私边界
 - 长文切块与段落级推荐都能在本地完成，避免高额模型成本与排队
+- 桌面端已经脱离浏览器配额上限，开始具备更稳定的持久化边界
 
 代价：
 
 - 数据不能跨设备同步
 - 不能做协作、权限和审计
-- 本地存储容量有限
+- 当前桌面主存储仍是 JSON Store，而不是数据库
 - 结构演进时需要考虑迁移脚本与兼容逻辑
 
 ## 6. 版本化存储路线图
@@ -191,16 +200,16 @@ Conflux 当前不会把 block 关系固化成单独表，而是按需推导：
 
 负责：
 
-- 为混合召回与 Intent Fission 预留前端缓存与索引扩展空间
+- 为混合召回预留前端缓存与索引扩展空间
 - 继续沿用当前 local-first 结构，不提前引入数据库换代
 
 ### `v1.2`
 
 负责：
 
-- 用 `IndexedDB` 承载本地图片与媒体资源
-- 让图文混排不再受 `localStorage` 容量硬顶制约
-- 在不破坏现有 block 结构的前提下补齐媒体引用语义
+- 收口长文编辑与结构化创作体验
+- 不再继续推进纯 Web `IndexedDB` 媒体方案
+- 保持当前 block 结构稳定，为桌面原生媒体承载让路
 
 ### `v1.3`
 
@@ -209,18 +218,32 @@ Conflux 当前不会把 block 关系固化成单独表，而是按需推导：
 - 为 Canvas、Table View 与高级属性治理补充可序列化状态位
 - 为批量属性整理与更复杂视图保存预留结构扩展空间
 
-### `v2.0-Alpha`
+### `v2.0`
 
 负责：
 
-- 把浏览器存储主轴迁移到 `SQLite`
-- 为本地向量检索引入数据库能力
-- 为文件落盘与加密同步提供可迁移的数据模型
+- 把桌面端持久化主轴切到 `Tauri Store`
+- 保持 Web 环境自动回退到 `localStorage`
+- 为未来数据库化迁移保留兼容空间
 - 让 revision、threads、presets 不再被局限在浏览器存储容量与形态里
 
-## 7. `v2.0-Alpha` 存储迁移预案
+当前实现态：
 
-如果进入 `v2.0-Alpha`，建议将当前本地结构映射为如下表：
+- Zustand persist 已切到异步 `Tauri Store` 适配
+- 首启会从 legacy `localStorage` 自动迁移到 `conflux_universe.json`
+- 当前读写协议已经对齐 `createJSONStorage` 的字符串协议
+
+### `v2.1`
+
+负责：
+
+- 将图片与附件从正文内联数据中剥离出来
+- 通过原生文件系统把媒体写入本地 `media/` 目录
+- 让正文只保存资源引用，而不是巨型 Base64 内容
+
+## 7. 未来数据库化迁移预案
+
+如果未来 `Tauri Store (JSON)` 已无法满足容量、查询或同步需求，再考虑把当前结构迁移为数据库表：
 
 ### `flux_blocks`
 
@@ -269,7 +292,7 @@ Conflux 当前不会把 block 关系固化成单独表，而是按需推导：
 
 ## 8. 迁移硬约束
 
-如果未来从浏览器存储迁移到 `v2.0-Alpha` 本地数据库，必须保证：
+如果未来从当前 `Tauri Store + localStorage fallback` 迁移到本地数据库，必须保证：
 
 - 旧用户的 `flux_blocks_store` 可被一次性导入
 - `dimensions` 保持数组语义，不被压扁成字符串

@@ -13,7 +13,7 @@ import {
 } from '../features/pools/utils'
 import { useFluxStore } from '../store/useFluxStore'
 import { isAiConfigReady, readAiConfig } from '../utils/aiConfig'
-import { classifyQuickCapture, segmentQuickCaptureIntent } from '../utils/ai'
+import { classifyQuickCapture } from '../utils/ai'
 import { displayDimensionValue, matchesDimensionValue } from '../utils/displayTag'
 import {
   BLOCK_DIMENSION_DEFAULTS,
@@ -285,27 +285,22 @@ export function FeedPage() {
         return
       }
 
-      const segments = isAiConfigReady(aiConfig)
-        ? await segmentQuickCaptureIntent(content, aiConfig)
-        : [content]
-
-      const pendingBlocks = segments.map((segment) => {
-        const firstLine = segment.split('\n')[0].trim()
-        const id = buildBlockId()
-
-        return {
-          id,
-          segment,
+      const firstLine = content.split('\n')[0].trim()
+      const blockId = buildBlockId()
+      const pendingBlocks = [
+        {
+          id: blockId,
+          segment: content,
           fallbackBlock: {
-            id,
+            id: blockId,
             title: firstLine.length > 15 ? `${firstLine.slice(0, 15)}...` : firstLine,
-            content: segment,
+            content,
             dimensions: baseDimensions,
             createdAt: timestamp,
             updatedAt: timestamp,
           },
-        }
-      })
+        },
+      ]
 
       addBlocks(pendingBlocks.map((item) => item.fallbackBlock))
 

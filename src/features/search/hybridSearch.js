@@ -1,11 +1,10 @@
 import { contentToPlainText } from '../../utils/blocks.js'
 import { cosineSimilarity, getTextEmbedding } from './embedder.js'
+import { RECOMMENDATION_POLICY } from './recommendationPolicy.js'
 
 const DEFAULT_SNIPPET_LENGTH = 500
-const DEFAULT_SEMANTIC_THRESHOLD = 0.38
-const DEFAULT_LIMIT = 2
-const BOTH_HIT_BONUS = 1000
-const LEXICON_HIT_BONUS = 100
+const DEFAULT_SEMANTIC_THRESHOLD = RECOMMENDATION_POLICY.semanticThreshold
+const DEFAULT_LIMIT = RECOMMENDATION_POLICY.semanticLimit
 
 function normalizeArray(value) {
   return Array.isArray(value) ? value : []
@@ -54,6 +53,66 @@ function buildSemanticCandidates(queryVector, vectorSnapshot, threshold) {
     .sort((left, right) => right.similarity - left.similarity)
 }
 
+export function mergeHybridSearchResults(
+  semanticHits = [],
+  lexiconResults = [],
+  options = {},
+) {
+  const limit = options.limit ?? DEFAULT_LIMIT
+  const lexiconHits = normalizeArray(lexiconResults)
+    .map(normalizeLexiconHit)
+    .filter(Boolean)
+  const merged = new Map()
+
+  normalizeArray(semanticHits).forEach((hit) => {
+    if (!hit?.blockId) return
+
+    merged.set(hit.blockId, {
+      block: hit.block,
+      blockId: hit.blockId,
+      reason: 'semantic',
+      semanticScore: typeof hit.similarity === 'number' ? hit.similarity : 0,
+      lexiconScore: 0,
+      matchedTerms: [],
+      score: typeof hit.similarity === 'number' ? hit.similarity : 0,
+      title: hit.title,
+    })
+  })
+
+  lexiconHits.forEach((hit) => {
+    const current = merged.get(hit.blockId)
+    if (current) {
+      merged.set(hit.blockId, {
+        ...current,
+        lexiconScore: hit.confidence,
+        matchedTerms: hit.matchedTerms,
+        reason: 'both',
+        score: RECOMMENDATION_POLICY.bothHitBonus + current.semanticScore + hit.confidence,
+      })
+      return
+    }
+
+    merged.set(hit.blockId, {
+      block: hit.block,
+      blockId: hit.blockId,
+      reason: 'entities',
+      semanticScore: 0,
+      lexiconScore: hit.confidence,
+      matchedTerms: hit.matchedTerms,
+      score: RECOMMENDATION_POLICY.lexiconHitBonus + hit.confidence,
+      title: normalizeString(hit.block?.title),
+    })
+  })
+
+  return [...merged.values()]
+    .sort((left, right) => {
+      if (right.score !== left.score) return right.score - left.score
+      if (right.semanticScore !== left.semanticScore) return right.semanticScore - left.semanticScore
+      return right.lexiconScore - left.lexiconScore
+    })
+    .slice(0, limit)
+}
+
 export async function buildVectorSnapshot(fluxBlocks = [], options = {}) {
   const snippetLength = options.snippetLength ?? DEFAULT_SNIPPET_LENGTH
   const snapshot = []
@@ -94,57 +153,7 @@ export async function performHybridSearch(
   if (!queryVector.length) return []
 
   const semanticHits = buildSemanticCandidates(queryVector, vectorSnapshot, semanticThreshold)
-  const lexiconHits = normalizeArray(lexiconResults)
-    .map(normalizeLexiconHit)
-    .filter(Boolean)
-
-  const merged = new Map()
-
-  semanticHits.forEach((hit) => {
-    merged.set(hit.blockId, {
-      block: hit.block,
-      blockId: hit.blockId,
-      reason: 'semantic',
-      semanticScore: hit.similarity,
-      lexiconScore: 0,
-      matchedTerms: [],
-      score: hit.similarity,
-      title: hit.title,
-    })
-  })
-
-  lexiconHits.forEach((hit) => {
-    const current = merged.get(hit.blockId)
-    if (current) {
-      merged.set(hit.blockId, {
-        ...current,
-        lexiconScore: hit.confidence,
-        matchedTerms: hit.matchedTerms,
-        reason: 'both',
-        score: BOTH_HIT_BONUS + current.semanticScore + hit.confidence,
-      })
-      return
-    }
-
-    merged.set(hit.blockId, {
-      block: hit.block,
-      blockId: hit.blockId,
-      reason: 'entities',
-      semanticScore: 0,
-      lexiconScore: hit.confidence,
-      matchedTerms: hit.matchedTerms,
-      score: LEXICON_HIT_BONUS + hit.confidence,
-      title: normalizeString(hit.block?.title),
-    })
-  })
-
-  return [...merged.values()]
-    .sort((left, right) => {
-      if (right.score !== left.score) return right.score - left.score
-      if (right.semanticScore !== left.semanticScore) return right.semanticScore - left.semanticScore
-      return right.lexiconScore - left.lexiconScore
-    })
-    .slice(0, limit)
+  return mergeHybridSearchResults(semanticHits, lexiconResults, { limit })
 }
 
 export {

@@ -1,10 +1,12 @@
 ﻿import Fuse from 'fuse.js'
 import { getPoolMatchScore } from '../pools/utils.js'
-import { performHybridSearch } from '../search/hybridSearch.js'
+import {
+  calculateLexiconConfidence,
+  calculateSemanticConfidence,
+  RECOMMENDATION_POLICY,
+  resolveFuseThreshold,
+} from '../search/recommendationPolicy.js'
 
-const MIN_PARAGRAPH_LENGTH = 8
-const MIN_MATCHED_TERMS = 1
-const MAX_FUSE_SCORE = 0.18
 const STOP_WORDS = new Set([
   'ai',
   'and',
@@ -157,31 +159,43 @@ function buildLexiconCandidates({ activePoolContext, engine, paragraph }) {
   if (!engine?.entries?.length) return []
 
   const normalizedParagraph = normalizeSearchValue(paragraph)
-  if (!normalizedParagraph || normalizedParagraph.length < MIN_PARAGRAPH_LENGTH) return []
+  if (!normalizedParagraph || normalizedParagraph.length < RECOMMENDATION_POLICY.minParagraphLength) return []
 
   return engine.entries
     .map((entry) => {
       const matchedTerms = collectMatchedTerms(entry, normalizedParagraph)
-      if (matchedTerms.length < MIN_MATCHED_TERMS) return null
+      if (matchedTerms.length < RECOMMENDATION_POLICY.minMatchedTerms) return null
 
       const fuseQuery = matchedTerms.map((term) => term.raw).join(' ')
       const fuseResult = engine.fuse
         .search(fuseQuery)
         .find((result) => result.item.blockId === entry.blockId)
       const fuseScore = fuseResult?.score ?? 1
+      const fuseThreshold = resolveFuseThreshold(matchedTerms.length)
 
-      if (fuseScore > MAX_FUSE_SCORE) return null
+      if (fuseScore > fuseThreshold) return null
 
       const poolBonus = getPoolMatchScore(entry.block, activePoolContext)
-      const confidence = matchedTerms.length * 140 + Math.round((1 - fuseScore) * 100) + poolBonus
+      const confidence = calculateLexiconConfidence({
+        matchedTermsCount: matchedTerms.length,
+        fuseScore,
+        poolBonus,
+      })
 
       return {
         block: entry.block,
         blockId: entry.blockId,
         confidence,
         fuseScore,
+        fuseThreshold,
         matchedTerms: matchedTerms.map((term) => term.raw),
         paragraph: paragraph.trim(),
+        reason: 'entities',
+        reasonDetails: {
+          matchedTermsCount: matchedTerms.length,
+          poolBonus,
+          strategy: matchedTerms.length >= RECOMMENDATION_POLICY.relaxedFuseMatchedTerms ? 'relaxed' : 'strict',
+        },
       }
     })
     .filter(Boolean)
@@ -216,10 +230,12 @@ export async function findHybridContextRecommendation({
   activePoolContext,
   engine,
   paragraph,
+  vectorCacheError = null,
+  vectorCacheStatus = 'idle',
   vectorSnapshot = [],
 }) {
   const normalizedParagraph = normalizeSearchValue(paragraph)
-  if (!normalizedParagraph || normalizedParagraph.length < MIN_PARAGRAPH_LENGTH) return null
+  if (!normalizedParagraph || normalizedParagraph.length < RECOMMENDATION_POLICY.minParagraphLength) return null
 
   const lexiconCandidates = buildLexiconCandidates({ activePoolContext, engine, paragraph })
   const lexiconTopHit = lexiconCandidates[0] ?? null
@@ -228,13 +244,20 @@ export async function findHybridContextRecommendation({
     return lexiconTopHit
       ? {
           ...lexiconTopHit,
-          reason: 'entities',
+          fallbackReason:
+            vectorCacheStatus === 'failed'
+              ? 'cache-failed'
+              : vectorCacheStatus === 'warming'
+                ? 'cache-warming'
+                : 'cache-idle',
+          recommendationPath: 'lexicon-only',
           semanticScore: 0,
         }
       : null
   }
 
   try {
+    const { performHybridSearch } = await import('../search/hybridSearch.js')
     const hybridResults = await performHybridSearch(paragraph, vectorSnapshot, lexiconCandidates, {
       limit: 2,
     })
@@ -244,7 +267,8 @@ export async function findHybridContextRecommendation({
       return lexiconTopHit
         ? {
             ...lexiconTopHit,
-            reason: 'entities',
+            fallbackReason: 'semantic-no-hit',
+            recommendationPath: 'lexicon-only',
             semanticScore: 0,
           }
         : null
@@ -255,18 +279,27 @@ export async function findHybridContextRecommendation({
     return {
       block: topHit.block,
       blockId: topHit.blockId,
-      confidence: topHit.lexiconScore || Math.round(topHit.semanticScore * 100),
+      confidence: topHit.lexiconScore || calculateSemanticConfidence(topHit.semanticScore),
       fuseScore: matchingLexiconHit?.fuseScore ?? 1,
+      fuseThreshold: matchingLexiconHit?.fuseThreshold ?? resolveFuseThreshold(0),
       matchedTerms: topHit.matchedTerms ?? [],
       paragraph: paragraph.trim(),
       reason: topHit.reason,
+      reasonDetails: matchingLexiconHit?.reasonDetails ?? {
+        matchedTermsCount: 0,
+        poolBonus: 0,
+        strategy: 'semantic-only',
+      },
+      fallbackReason: null,
+      recommendationPath: topHit.reason === 'semantic' || topHit.reason === 'both' ? 'hybrid' : 'lexicon-only',
       semanticScore: topHit.semanticScore ?? 0,
     }
   } catch {
     return lexiconTopHit
       ? {
           ...lexiconTopHit,
-          reason: 'entities',
+          fallbackReason: vectorCacheError ? 'semantic-exception' : 'semantic-unavailable',
+          recommendationPath: 'lexicon-only',
           semanticScore: 0,
         }
       : null

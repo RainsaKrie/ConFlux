@@ -1,6 +1,8 @@
 ﻿import { useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { Clock3, ExternalLink, GitMerge, Hash, LoaderCircle, Sparkles, X } from 'lucide-react'
+import { resolveRecommendationUiState } from '../../features/recommendation/recommendationPresentation'
+import { RECOMMENDATION_POLICY } from '../../features/search/recommendationPolicy'
 import { useTranslation } from '../../i18n/I18nProvider'
 import { displayDimensionValue } from '../../utils/displayTag'
 import { RevisionDiffPanel } from '../assimilation/RevisionDiffPanel'
@@ -70,6 +72,7 @@ export function PeekDrawer({
   }
 
   const recommendationReason = drawerRecommendation?.reason ?? 'entities'
+  const recommendationUiState = resolveRecommendationUiState(drawerRecommendation)
   const recommendationReasonLabel = recommendationReason === 'semantic'
     ? t('drawer.recommendationReason.semantic')
     : recommendationReason === 'both'
@@ -82,6 +85,39 @@ export function PeekDrawer({
     : recommendationReason === 'both'
       ? 'border border-amber-100 bg-amber-50 text-amber-700'
       : 'border border-indigo-100 bg-indigo-50 text-indigo-600'
+  const recommendationPathLabel = t(
+    `drawer.recommendationPath.${drawerRecommendation?.recommendationPath ?? 'lexicon-only'}`,
+  )
+  const recommendationPathClassName = recommendationUiState === 'fallback'
+    ? 'border border-zinc-200 bg-zinc-100 text-zinc-500'
+    : drawerRecommendation?.recommendationPath === 'hybrid'
+      ? 'border border-emerald-100 bg-emerald-50 text-emerald-700'
+      : 'border border-zinc-200 bg-zinc-100 text-zinc-500'
+  const matchedTermsCount = drawerRecommendation?.reasonDetails?.matchedTermsCount
+    ?? drawerRecommendation?.matchedTerms?.length
+    ?? 0
+  const semanticScore = Number.isFinite(drawerRecommendation?.semanticScore)
+    ? drawerRecommendation.semanticScore
+    : 0
+  const recommendationEvidenceLabel = recommendationReason === 'semantic'
+    ? t('drawer.recommendationEvidence.semantic', {
+        score: semanticScore.toFixed(2),
+        threshold: RECOMMENDATION_POLICY.semanticThreshold.toFixed(2),
+      })
+    : recommendationReason === 'both'
+      ? t('drawer.recommendationEvidence.both', {
+          score: semanticScore.toFixed(2),
+          terms: matchedTermsCount,
+        })
+      : t('drawer.recommendationEvidence.entities', {
+          strategy: drawerRecommendation?.reasonDetails?.strategy === 'relaxed'
+            ? t('drawer.recommendationStrategy.relaxed')
+            : t('drawer.recommendationStrategy.strict'),
+          terms: matchedTermsCount,
+        })
+  const fallbackLabel = drawerRecommendation?.fallbackReason
+    ? t(`drawer.recommendationFallback.${drawerRecommendation.fallbackReason}`)
+    : ''
 
   return (
     <MotionAside
@@ -152,10 +188,21 @@ export function PeekDrawer({
           </div>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
+            <span className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${recommendationPathClassName}`}>
+              {recommendationPathLabel}
+            </span>
             <span className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${recommendationReasonClassName}`}>
               {recommendationReasonLabel}
             </span>
           </div>
+
+          {fallbackLabel ? (
+            <p className="mt-3 text-xs leading-5 text-zinc-400">{fallbackLabel}</p>
+          ) : null}
+
+          {recommendationEvidenceLabel ? (
+            <p className="mt-2 text-xs leading-5 text-zinc-400">{recommendationEvidenceLabel}</p>
+          ) : null}
 
           {drawerRecommendation?.matchedTerms?.length && recommendationReason !== 'semantic' ? (
             <div className="mt-3 flex flex-wrap items-center gap-2">

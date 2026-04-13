@@ -19,7 +19,13 @@ import {
   findHybridContextRecommendation,
   readCurrentParagraphText,
 } from '../features/recommendation/contextRecommendation'
-import { getVectorCacheSnapshot, warmVectorCache } from '../features/search/vectorCacheService'
+import { resolveRecommendationUiState } from '../features/recommendation/recommendationPresentation'
+import {
+  getVectorCacheError,
+  getVectorCacheSnapshot,
+  getVectorCacheStatus,
+  warmVectorCache,
+} from '../features/search/vectorCacheService'
 import { useTranslation } from '../i18n/I18nProvider'
 import { useFluxStore } from '../store/useFluxStore'
 import { classifyQuickCapture } from '../utils/ai'
@@ -287,8 +293,9 @@ export function EditorPage() {
         : null,
     [contextRecommendation, fluxBlocks],
   )
-  const isSemanticRecommendation = Boolean(
-    contextRecommendation?.reason === 'semantic' && (contextRecommendation?.semanticScore ?? 0) > 0.55,
+  const recommendationUiState = useMemo(
+    () => resolveRecommendationUiState(contextRecommendation),
+    [contextRecommendation],
   )
   const isRecommendationDrawerActive = Boolean(
     drawerRecommendation?.targetBlockId && peekBlockId === drawerRecommendation.targetBlockId,
@@ -311,6 +318,20 @@ export function EditorPage() {
   const isSelectedRevisionCurrent = Boolean(
     peekBlock && selectedRevision && (peekBlock.content ?? '') === (selectedRevision.afterContent ?? ''),
   )
+  const recommendationCtaLabel = recommendationUiState === 'both'
+    ? t('editor.recommendationCtaBoth')
+    : recommendationUiState === 'semantic'
+      ? t('editor.recommendationCtaSemantic')
+      : recommendationUiState === 'fallback'
+        ? t('editor.recommendationCtaFallback')
+        : t('editor.recommendationCtaEntities')
+  const recommendationCtaClassName = recommendationUiState === 'both'
+    ? 'border-amber-200/80 bg-gradient-to-r from-white via-amber-50/90 to-white text-amber-700 shadow-[0_10px_30px_rgba(245,158,11,0.12)] hover:text-amber-800'
+    : recommendationUiState === 'semantic'
+      ? 'border-purple-200/70 bg-gradient-to-r from-white via-purple-50/90 to-white text-purple-500 shadow-[0_10px_30px_rgba(168,85,247,0.12)] hover:text-purple-600'
+      : recommendationUiState === 'fallback'
+        ? 'border-zinc-200/70 bg-white/90 text-zinc-500 hover:text-zinc-700'
+        : 'border-indigo-200/70 bg-white/90 text-indigo-500 shadow-[0_10px_25px_rgba(99,102,241,0.08)] hover:text-indigo-600'
 
   useEffect(
     () => () => {
@@ -589,9 +610,12 @@ export function EditorPage() {
     if (!recommendedBlock || !contextRecommendation) return
 
     setDrawerRecommendation({
+      fallbackReason: contextRecommendation.fallbackReason ?? null,
       matchedTerms: contextRecommendation.matchedTerms,
       paragraph: contextRecommendation.paragraph,
+      recommendationPath: contextRecommendation.recommendationPath ?? 'lexicon-only',
       reason: contextRecommendation.reason ?? 'entities',
+      reasonDetails: contextRecommendation.reasonDetails ?? null,
       semanticScore: contextRecommendation.semanticScore ?? 0,
       targetBlockId: recommendedBlock.id,
     })
@@ -920,6 +944,8 @@ export function EditorPage() {
           activePoolContext,
           engine: recommendationEngine,
           paragraph,
+          vectorCacheError: getVectorCacheError(),
+          vectorCacheStatus: getVectorCacheStatus(),
           vectorSnapshot: getVectorCacheSnapshot(),
         })
         if (!isCancelled) {
@@ -1134,23 +1160,19 @@ export function EditorPage() {
             : t('editor.recommendationEmptyAria')
         }
         className={`fixed bottom-6 right-6 z-40 flex items-center gap-1.5 rounded-full border px-2 py-1 text-[10px] shadow-sm transition-all ${
-          isSemanticRecommendation
-            ? 'border-purple-200/70 bg-gradient-to-r from-white via-purple-50/90 to-white text-purple-500 shadow-[0_10px_30px_rgba(168,85,247,0.12)] hover:text-purple-600'
-            : 'border-zinc-200/50 bg-white/80 text-zinc-400 hover:text-indigo-600'
+          recommendationCtaClassName
         } ${
           recommendedBlock ? 'cursor-pointer opacity-100' : 'pointer-events-none opacity-0'
         }`}
       >
-        {isSemanticRecommendation ? (
+        {recommendationUiState === 'both' ? (
+          <Orbit size={10} strokeWidth={2} className="text-amber-500" />
+        ) : recommendationUiState === 'semantic' ? (
           <Sparkles size={10} strokeWidth={2} className="text-purple-400" />
         ) : (
           <Link size={10} strokeWidth={2} />
         )}
-        <span>
-          {isSemanticRecommendation
-            ? t('editor.recommendationCtaSemantic')
-            : t('editor.recommendationCtaEntities')}
-        </span>
+        <span>{recommendationCtaLabel}</span>
       </button>
 
       <AnimatePresence>
