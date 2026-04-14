@@ -1,6 +1,6 @@
 ﻿# Conflux 核心架构
 
-文档基线：`v1.0 稳定化阶段 / Roadmap Solidified`
+文档基线：`v1.1 已结案 / Next Milestone Pending`
 
 ## 1. 架构定位
 
@@ -10,8 +10,9 @@
 
 - `v0.9` 的段落级本地推荐主链
 - `v1.0` 的长文切块与线程串联主链
+- 已完成收口的 `v1.1` 混合召回主链
 
-因此当前工程称呼仍然是：`v1.0 稳定化阶段`。
+因此当前工程称呼现在更新为：`v1.1 已结案，下一阶段待决`。
 
 ## 2. 当前技术基线
 
@@ -211,13 +212,13 @@ type FluxBlock = {
 - 已完成 `buildVectorSnapshot()` 与 `performHybridSearch()` 的逻辑层封装，可在不修改 UI 主线程的前提下离线验证“实体命中 + 语义命中 + 双命中”三类归因结果
 - 已完成 `vectorCacheService` 与 `/write` 主推荐链路接线：当前段落推荐会优先走词典，再在缓存可用时补做语义重排，并在 UI 上区分普通关联与纯语义潜藏关联
 
-`v1.1` 在架构层仍需继续收口的点：
+`v1.1` 当前已经完成的架构收口包括：
 
-- 为真实笔记样本补齐更可信的推荐回归，而不只依赖实验脚本
-- 明确 `vectorCache` 的预热、失效、回退与大库重建边界
-- 收束混合排序参数，降低经验值调参带来的漂移风险
-- 保证 `Hybrid Search` 不可用时，词典链路仍然是稳定默认回退面
-- 让 `entities / semantic / both` 的归因解释在状态、排序与 UI 呈现上保持一致
+- 真实项目语境样本、fallback、双命中与排序优先级已进入 `verify:phantom`
+- `vectorCache` 已明确 `idle / warming / ready / failed` 状态，并改为增量预热
+- 混合排序参数已统一收束到 recommendation policy
+- `Hybrid Search` 不可用时已稳定回退到词典链路
+- `entities / semantic / both / fallback` 的归因解释、入口 CTA 与 Drawer 表达已完成一致化
 
 ### 7.2 `v1.2` 架构任务
 
@@ -267,7 +268,7 @@ type FluxBlock = {
 
 当前所有待决架构问题，统一归属如下：
 
-- `Phantom Weaving` 仍停留在高置信词典预筛：归 `v1.1`
+- `Phantom Weaving` 的混合召回主链已完成 `v1.1` 收口；若再继续深挖诊断与调参，默认视作 `v1.1` 之后的增强项，而不是结案前置条件
 - Quick Capture 继续保持极简入库与物理切块，不再继续扩展主题裂变链路
 - 长文创作的 TOC 已进入当前基线，折叠仍属 `v1.2` 余项
 - 图片与多媒体不再归属纯 Web `v1.2`，统一并入 `v2.0`
