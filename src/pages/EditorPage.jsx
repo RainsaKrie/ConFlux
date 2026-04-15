@@ -13,6 +13,8 @@ import { AssimilationInlinePreviewModal } from '../components/assimilation/Assim
 import { EditorToolbar, FluxEditor } from '../components/editor/FluxEditor'
 import { OutlinerPanel } from '../components/editor/OutlinerPanel'
 import { PeekDrawer } from '../components/editor/PeekDrawer'
+import { extractOutlineFromEditor } from '../features/editor/outline'
+import { getCollapsedHeadingPositions } from '../components/editor/extensions/FoldingExtension'
 import {
   buildContextRecommendationEngine,
   buildDrawerSummary,
@@ -70,48 +72,6 @@ const dimensionStyles = {
   source: 'border border-emerald-100 bg-emerald-50 text-emerald-700',
 }
 const MotionSection = motion.section
-
-function normalizeHeadingText(value = '') {
-  return value.replace(/\s+/g, ' ').trim()
-}
-
-function extractOutlineFromEditor(editor, html = '') {
-  const liveHeadings = Array.from(editor?.view?.dom?.querySelectorAll?.('h1, h2, h3') ?? [])
-  if (liveHeadings.length > 0) {
-    return liveHeadings
-      .map((node, index) => {
-        const text = normalizeHeadingText(node.textContent ?? '')
-        if (!text) return null
-
-        const id = `outline-heading-${index}`
-        node.id = id
-        node.dataset.outlineId = id
-
-        return {
-          id,
-          level: Number(node.tagName.slice(1)) || 1,
-          text,
-        }
-      })
-      .filter(Boolean)
-  }
-
-  if (!html.trim() || typeof DOMParser === 'undefined') return []
-
-  const document = new DOMParser().parseFromString(html, 'text/html')
-  return Array.from(document.querySelectorAll('h1, h2, h3'))
-    .map((node, index) => {
-      const text = normalizeHeadingText(node.textContent ?? '')
-      if (!text) return null
-
-      return {
-        id: `outline-heading-${index}`,
-        level: Number(node.tagName.slice(1)) || 1,
-        text,
-      }
-    })
-    .filter(Boolean)
-}
 
 function extractJsonObject(text = '') {
   const fenced = text.match(/```json\s*([\s\S]*?)```/i)
@@ -225,11 +185,14 @@ export function EditorPage() {
   const [assimilationPreview, setAssimilationPreview] = useState(null)
   const [editorInstance, setEditorInstance] = useState(null)
   const [outlineItems, setOutlineItems] = useState([])
+  const [activeOutlineId, setActiveOutlineId] = useState(null)
+  const [collapsedHeadingPositions, setCollapsedHeadingPositions] = useState([])
   const titleSaveTimeoutRef = useRef(null)
   const contentSaveTimeoutRef = useRef(null)
   const recommendationTimeoutRef = useRef(null)
   const vectorWarmupTimeoutRef = useRef(null)
   const outlineTimeoutRef = useRef(null)
+  const sectionRef = useRef(null)
   const pendingCreatedIdRef = useRef(null)
   const aiEnrichedIdsRef = useRef(new Set())
   const isHydratingRef = useRef(false)
@@ -296,6 +259,19 @@ export function EditorPage() {
   const recommendationUiState = useMemo(
     () => resolveRecommendationUiState(contextRecommendation),
     [contextRecommendation],
+  )
+  const effectiveActiveOutlineId = useMemo(
+    () => (outlineItems.some((item) => item.id === activeOutlineId) ? activeOutlineId : outlineItems[0]?.id ?? null),
+    [activeOutlineId, outlineItems],
+  )
+  const effectiveCollapsedOutlineIds = useMemo(
+    () =>
+      Object.fromEntries(
+        outlineItems
+          .filter((item) => collapsedHeadingPositions.includes(item.pos))
+          .map((item) => [item.id, true]),
+      ),
+    [collapsedHeadingPositions, outlineItems],
   )
   const isRecommendationDrawerActive = Boolean(
     drawerRecommendation?.targetBlockId && peekBlockId === drawerRecommendation.targetBlockId,
@@ -830,6 +806,13 @@ export function EditorPage() {
     }, 1200)
   }, [])
 
+  const handleToggleOutlineCollapse = useCallback((item) => {
+    if (!item?.id || !Number.isInteger(item.pos) || !editorInstance) return
+
+    editorInstance.chain().focus().toggleCollapsedHeading(item.pos).run()
+    setCollapsedHeadingPositions(getCollapsedHeadingPositions(editorInstance.state))
+  }, [editorInstance])
+
   const handleRestoreFromDrawer = () => {
     if (!peekBlock || !selectedRevision || isSelectedRevisionCurrent) return
 
@@ -926,6 +909,58 @@ export function EditorPage() {
   }, [content, editorInstance])
 
   useEffect(() => {
+    if (!outlineItems.length) return undefined
+
+    const scrollRoot = sectionRef.current?.parentElement
+    if (!scrollRoot) return undefined
+
+    const resolveActiveHeading = () => {
+      const headingNodes = outlineItems
+        .map((item) => ({
+          id: item.id,
+          node: document.getElementById(item.id),
+        }))
+        .filter((entry) => entry.node)
+
+      if (!headingNodes.length) return
+
+      const rootTop = scrollRoot.getBoundingClientRect().top
+      const activationLine = rootTop + 132
+      let nextActiveId = headingNodes[0].id
+
+      headingNodes.forEach(({ id, node }) => {
+        if (node.getBoundingClientRect().top <= activationLine) {
+          nextActiveId = id
+        }
+      })
+
+      setActiveOutlineId(nextActiveId)
+    }
+
+    const initialFrame = window.requestAnimationFrame(resolveActiveHeading)
+    scrollRoot.addEventListener('scroll', resolveActiveHeading, { passive: true })
+    window.addEventListener('resize', resolveActiveHeading)
+
+    return () => {
+      window.cancelAnimationFrame(initialFrame)
+      scrollRoot.removeEventListener('scroll', resolveActiveHeading)
+      window.removeEventListener('resize', resolveActiveHeading)
+    }
+  }, [outlineItems])
+
+  useEffect(() => {
+    if (!editorInstance) return undefined
+
+    const animationFrame = window.requestAnimationFrame(() => {
+      setCollapsedHeadingPositions(getCollapsedHeadingPositions(editorInstance.state))
+    })
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame)
+    }
+  }, [content, editorInstance, outlineItems])
+
+  useEffect(() => {
     if (isHydratingRef.current) return undefined
 
     let isCancelled = false
@@ -973,12 +1008,17 @@ export function EditorPage() {
   return (
     <>
       <OutlinerPanel
+        activeId={effectiveActiveOutlineId}
+        collapsedIds={effectiveCollapsedOutlineIds}
+        emptyLabel={t('editor.outlineEmpty')}
         items={outlineItems}
         onJump={handleJumpToOutlineItem}
+        onToggleCollapse={handleToggleOutlineCollapse}
         title={t('editor.outlineTitle')}
       />
 
       <MotionSection
+        ref={sectionRef}
         initial={{ opacity: 0, y: 18 }}
         animate={{ opacity: 1, y: 0 }}
         className="mx-auto mt-14 max-w-4xl px-4 pb-16"

@@ -1,6 +1,8 @@
 ﻿import { useMemo } from 'react'
 import { motion } from 'framer-motion'
+import { useEffect, useRef, useState } from 'react'
 import { Clock3, ExternalLink, GitMerge, Hash, LoaderCircle, Sparkles, X } from 'lucide-react'
+import { annotateOutlineHtml } from '../../features/editor/outline'
 import { resolveRecommendationUiState } from '../../features/recommendation/recommendationPresentation'
 import { RECOMMENDATION_POLICY } from '../../features/search/recommendationPolicy'
 import { useTranslation } from '../../i18n/I18nProvider'
@@ -36,10 +38,24 @@ export function PeekDrawer({
   selectedRevisionSourceBlock,
 }) {
   const { language, t } = useTranslation()
+  const asideRef = useRef(null)
+  const [activeOutlineId, setActiveOutlineId] = useState(null)
 
   const peekHasSecondaryMetadata = useMemo(
     () => secondaryEditableDimensions.some((dimension) => (peekDimensions?.[dimension] ?? []).length > 0),
     [peekDimensions],
+  )
+  const peekOutline = useMemo(
+    () => annotateOutlineHtml(peekBlock?.content ?? '', { idPrefix: `peek-outline-${peekBlock?.id ?? 'block'}` }),
+    [peekBlock?.content, peekBlock?.id],
+  )
+  const effectiveActiveOutlineId = useMemo(
+    () => (
+      peekOutline.items.some((item) => item.id === activeOutlineId)
+        ? activeOutlineId
+        : peekOutline.items[0]?.id ?? null
+    ),
+    [activeOutlineId, peekOutline.items],
   )
 
   const dimensionLabels = useMemo(
@@ -51,7 +67,65 @@ export function PeekDrawer({
     [t],
   )
 
+  useEffect(() => {
+    if (!peekOutline.items.length) return undefined
+
+    const scrollRoot = asideRef.current
+    if (!scrollRoot) return undefined
+
+    const resolveActiveHeading = () => {
+      const headingNodes = peekOutline.items
+        .map((item) => ({
+          id: item.id,
+          node: document.getElementById(item.id),
+        }))
+        .filter((entry) => entry.node)
+
+      if (!headingNodes.length) return
+
+      const rootTop = scrollRoot.getBoundingClientRect().top
+      const activationLine = rootTop + 196
+      let nextActiveId = headingNodes[0].id
+
+      headingNodes.forEach(({ id, node }) => {
+        if (node.getBoundingClientRect().top <= activationLine) {
+          nextActiveId = id
+        }
+      })
+
+      setActiveOutlineId(nextActiveId)
+    }
+
+    const initialFrame = window.requestAnimationFrame(resolveActiveHeading)
+    scrollRoot.addEventListener('scroll', resolveActiveHeading, { passive: true })
+    window.addEventListener('resize', resolveActiveHeading)
+
+    return () => {
+      window.cancelAnimationFrame(initialFrame)
+      scrollRoot.removeEventListener('scroll', resolveActiveHeading)
+      window.removeEventListener('resize', resolveActiveHeading)
+    }
+  }, [peekOutline])
+
   if (!peekBlock) return null
+
+  const handleJumpToPeekOutlineItem = (item) => {
+    if (!item?.id) return
+
+    const target = document.getElementById(item.id)
+    if (!target) return
+
+    target.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start',
+    })
+    target.classList.remove('editor-heading-flash')
+    void target.offsetWidth
+    target.classList.add('editor-heading-flash')
+    window.setTimeout(() => {
+      target.classList.remove('editor-heading-flash')
+    }, 1200)
+  }
 
   const formatRevisionTime = (value) => {
     const date = new Date(value)
@@ -121,6 +195,7 @@ export function PeekDrawer({
 
   return (
     <MotionAside
+      ref={asideRef}
       initial={{ x: '100%' }}
       animate={{ x: 0 }}
       exit={{ x: '100%' }}
@@ -242,6 +317,43 @@ export function PeekDrawer({
           )),
         )}
       </div>
+
+      {peekOutline.items.length ? (
+        <div className="mt-5 rounded-2xl border border-zinc-200/80 bg-zinc-50/80 px-4 py-3">
+          <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-400">{t('drawer.outlineTitle')}</div>
+          <div className="mt-3 space-y-1">
+            {peekOutline.items.map((item) => (
+              <button
+                key={`${peekBlock.id}-${item.id}`}
+                type="button"
+                onClick={() => handleJumpToPeekOutlineItem(item)}
+                className={`flex w-full items-center border-l bg-transparent py-1 text-left text-[11px] transition-colors ${
+                  effectiveActiveOutlineId === item.id
+                    ? 'border-zinc-700 text-zinc-900'
+                    : item.level === 1
+                      ? 'border-zinc-300 text-zinc-600 hover:text-zinc-800'
+                      : item.level === 2
+                        ? 'border-zinc-200 text-zinc-500 hover:text-zinc-700'
+                        : 'border-zinc-100 text-zinc-400 hover:text-zinc-600'
+                } ${
+                  item.level === 1
+                    ? 'pl-0'
+                    : item.level === 2
+                      ? 'pl-2'
+                      : 'pl-4'
+                }`}
+              >
+                <span className="block min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">{item.text}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="mt-5 rounded-2xl border border-zinc-200/80 bg-zinc-50/80 px-4 py-3">
+          <div className="text-[11px] uppercase tracking-[0.18em] text-zinc-400">{t('drawer.outlineTitle')}</div>
+          <div className="mt-3 text-[10px] leading-5 text-zinc-300">{t('drawer.outlineEmpty')}</div>
+        </div>
+      )}
 
       {peekHasSecondaryMetadata ? (
         <div className="mt-3 flex flex-wrap items-center gap-1.5 text-zinc-300">
@@ -369,7 +481,7 @@ export function PeekDrawer({
       {peekBlock.content?.trim() ? (
         <div
           className="prose-readable mt-8 text-[15px] leading-relaxed text-zinc-700"
-          dangerouslySetInnerHTML={{ __html: peekBlock.content }}
+          dangerouslySetInnerHTML={{ __html: peekOutline.html }}
         />
       ) : (
         <div className="mt-8 text-sm font-light leading-relaxed text-zinc-500">{t('drawer.emptyContent')}</div>

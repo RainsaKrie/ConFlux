@@ -29,6 +29,7 @@ import { isTauriRuntime, saveMedia } from '../../features/media/localMediaServic
 import { useFluxStore } from '../../store/useFluxStore'
 import { contentToPlainText } from '../../utils/blocks'
 import { AdaptiveLensNode } from './extensions/AdaptiveLensNode'
+import { FoldingExtension } from './extensions/FoldingExtension'
 
 function escapeHtml(text) {
   return text
@@ -464,6 +465,7 @@ export function FluxEditor({ initialContent = '', onChange, onEditorReady }) {
       StarterKit.configure({
         heading: { levels: [1, 2, 3] },
       }),
+      FoldingExtension,
       TaskList,
       TaskItem.configure({ nested: true }),
       Image.configure({

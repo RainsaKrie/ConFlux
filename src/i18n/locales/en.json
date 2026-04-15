@@ -102,7 +102,10 @@
     "poolEventAssimilation": "Source note updated",
     "poolEventRollback": "Restored to a previous revision",
     "confirmRestore": "Restore \"{{title}}\" to the revision from {{time}}?",
-    "outlineTitle": "Side index"
+    "outlineTitle": "Side index",
+    "outlineEmpty": "No outline structure yet",
+    "outlineCollapse": "Collapse {{title}}",
+    "outlineExpand": "Expand {{title}}"
   },
   "lens": {
     "title": "Reference",
@@ -111,6 +114,8 @@
   },
   "drawer": {
     "openFullPage": "Open full editor",
+    "outlineTitle": "In-note outline",
+    "outlineEmpty": "This note does not have headings yet",
     "smartRecommendation": "Suggested by context",
     "recommendationHint": "This suggestion was triggered locally from the current paragraph. It will only update the source note after you confirm.",
     "extractSummary": "Extract summary",
