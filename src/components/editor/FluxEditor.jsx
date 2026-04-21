@@ -25,11 +25,18 @@ import {
   Underline as UnderlineIcon,
 } from 'lucide-react'
 import { useTranslation } from '../../i18n/I18nProvider'
-import { isTauriRuntime, saveMedia } from '../../features/media/localMediaService'
+import {
+  attachNativeMediaIntegrityHandlers,
+  hasNativeMediaHint,
+  isTauriRuntime,
+  rehydrateNativeMediaHtml,
+  saveMedia,
+} from '../../features/media/localMediaService'
 import { useFluxStore } from '../../store/useFluxStore'
 import { contentToPlainText } from '../../utils/blocks'
 import { AdaptiveLensNode } from './extensions/AdaptiveLensNode'
 import { FoldingExtension } from './extensions/FoldingExtension'
+import { NativeAttachmentNode } from './extensions/NativeAttachmentNode'
 
 function escapeHtml(text) {
   return text
@@ -46,6 +53,46 @@ function normalizeEditorContent(content = '') {
   if (/<[a-z][\s\S]*>/i.test(trimmed)) return trimmed
   return `<p>${escapeHtml(trimmed).replace(/\n/g, '<br />')}</p>`
 }
+
+const NativeImage = Image.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      mediaRelativePath: {
+        default: null,
+        parseHTML: (element) => element.getAttribute('data-media-relative-path'),
+        renderHTML: (attributes) =>
+          attributes.mediaRelativePath
+            ? { 'data-media-relative-path': attributes.mediaRelativePath }
+            : {},
+      },
+      mediaOrigin: {
+        default: null,
+        parseHTML: (element) => element.getAttribute('data-media-origin'),
+        renderHTML: (attributes) =>
+          attributes.mediaOrigin
+            ? { 'data-media-origin': attributes.mediaOrigin }
+            : {},
+      },
+      mediaFileName: {
+        default: null,
+        parseHTML: (element) => element.getAttribute('data-media-file-name'),
+        renderHTML: (attributes) =>
+          attributes.mediaFileName
+            ? { 'data-media-file-name': attributes.mediaFileName }
+            : {},
+      },
+      mediaMissing: {
+        default: null,
+        parseHTML: (element) => element.getAttribute('data-media-missing'),
+        renderHTML: (attributes) =>
+          attributes.mediaMissing
+            ? { 'data-media-missing': attributes.mediaMissing }
+            : {},
+      },
+    }
+  },
+})
 
 function buildAdaptiveLensExcerpt(block) {
   const snippet = contentToPlainText(block.content)
@@ -78,7 +125,7 @@ function insertAdaptiveLens(editor, range, block) {
     .run()
 }
 
-function createImageFileName(file, fallbackLabel) {
+function createFileLabel(file, fallbackLabel) {
   if (typeof file.name === 'string' && file.name.trim()) {
     return file.name
   }
@@ -86,16 +133,30 @@ function createImageFileName(file, fallbackLabel) {
   return fallbackLabel
 }
 
-function extractPasteImageFiles(event) {
+function extractPasteFiles(event) {
   const items = Array.from(event.clipboardData?.items ?? [])
   return items
-    .filter((item) => item.type.startsWith('image/'))
     .map((item) => item.getAsFile())
     .filter(Boolean)
 }
 
-function extractDropImageFiles(event) {
-  return Array.from(event.dataTransfer?.files ?? []).filter((file) => file.type.startsWith('image/'))
+function extractDropFiles(event) {
+  return Array.from(event.dataTransfer?.files ?? [])
+}
+
+function partitionFiles(files) {
+  return files.reduce(
+    (bucket, file) => {
+      if (file.type.startsWith('image/')) {
+        bucket.images.push(file)
+      } else {
+        bucket.attachments.push(file)
+      }
+
+      return bucket
+    },
+    { images: [], attachments: [] },
+  )
 }
 
 function readFileAsDataUrl(file) {
@@ -110,11 +171,12 @@ function readFileAsDataUrl(file) {
 
 async function resolveEditorImageSource(file) {
   if (isTauriRuntime) {
-    const media = await saveMedia(file)
-    return media.src
+    return saveMedia(file)
   }
 
-  return readFileAsDataUrl(file)
+  return {
+    src: await readFileAsDataUrl(file),
+  }
 }
 
 async function insertImageFiles(editor, files, insertPosition = null) {
@@ -128,18 +190,58 @@ async function insertImageFiles(editor, files, insertPosition = null) {
 
   for (const [index, file] of files.entries()) {
     try {
-      const src = await resolveEditorImageSource(file)
+      const media = await resolveEditorImageSource(file)
       editor
         .chain()
         .focus()
         .setImage({
-          src,
-          alt: createImageFileName(file, `image-${index + 1}`),
-          title: createImageFileName(file, `image-${index + 1}`),
+          src: media.src,
+          alt: createFileLabel(file, `image-${index + 1}`),
+          title: createFileLabel(file, `image-${index + 1}`),
+          mediaFileName: media.fileName ?? null,
+          mediaOrigin: media.origin ?? null,
+          mediaRelativePath: media.relativePath ?? null,
         })
         .run()
     } catch (error) {
       console.warn('Failed to insert image into editor.', error)
+    }
+  }
+
+  return true
+}
+
+async function insertAttachmentFiles(editor, files, attachmentCopy, insertPosition = null) {
+  if (!editor || files.length === 0 || !isTauriRuntime) return false
+
+  if (typeof insertPosition === 'number') {
+    editor.chain().focus().setTextSelection(insertPosition).run()
+  } else {
+    editor.chain().focus().run()
+  }
+
+  for (const [index, file] of files.entries()) {
+    try {
+      const media = await saveMedia(file)
+      editor
+        .chain()
+        .focus()
+        .insertContent({
+          type: 'nativeAttachment',
+          attrs: {
+            fileName: createFileLabel(file, `file-${index + 1}`),
+            href: media.src,
+            mediaOrigin: media.origin ?? null,
+            mediaRelativePath: media.relativePath ?? null,
+            kickerLabel: attachmentCopy.kickerLabel,
+            openLabel: attachmentCopy.openLabel,
+            storedLabel: attachmentCopy.storedLabel,
+            unavailableLabel: attachmentCopy.unavailableLabel,
+          },
+        })
+        .run()
+    } catch (error) {
+      console.warn('Failed to insert local attachment into editor.', error)
     }
   }
 
@@ -458,6 +560,15 @@ export function FluxEditor({ initialContent = '', onChange, onEditorReady }) {
     [t],
   )
   const mentionSuggestion = useMemo(() => createMentionSuggestion(fluxBlocks, copy), [copy, fluxBlocks])
+  const attachmentCopy = useMemo(
+    () => ({
+      kickerLabel: t('editor.localAttachmentKicker'),
+      openLabel: t('editor.openLocalAttachment'),
+      storedLabel: t('editor.localAttachmentStored'),
+      unavailableLabel: t('editor.localAttachmentUnavailable'),
+    }),
+    [t],
+  )
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -466,9 +577,10 @@ export function FluxEditor({ initialContent = '', onChange, onEditorReady }) {
         heading: { levels: [1, 2, 3] },
       }),
       FoldingExtension,
+      NativeAttachmentNode,
       TaskList,
       TaskItem.configure({ nested: true }),
-      Image.configure({
+      NativeImage.configure({
         allowBase64: !isTauriRuntime,
         HTMLAttributes: {
           class: 'flux-editor-image',
@@ -501,16 +613,31 @@ export function FluxEditor({ initialContent = '', onChange, onEditorReady }) {
         class: 'tiptap min-h-[420px] max-w-none px-1 py-2',
       },
       handlePaste: (_view, event) => {
-        const imageFiles = extractPasteImageFiles(event)
-        if (imageFiles.length === 0) return false
+        const files = extractPasteFiles(event)
+        if (files.length === 0) return false
+
+        const imageFiles = files.filter((file) => file.type.startsWith('image/'))
+        const attachmentFiles = files.filter((file) => !file.type.startsWith('image/'))
+        if (imageFiles.length === 0 && attachmentFiles.length === 0) return false
 
         event.preventDefault()
-        void insertImageFiles(editor, imageFiles)
+        void (async () => {
+          if (imageFiles.length) {
+            await insertImageFiles(editor, imageFiles)
+          }
+
+          if (attachmentFiles.length && isTauriRuntime) {
+            await insertAttachmentFiles(editor, attachmentFiles, attachmentCopy)
+          }
+        })()
         return true
       },
       handleDrop: (view, event) => {
-        const imageFiles = extractDropImageFiles(event)
-        if (imageFiles.length === 0) return false
+        const files = extractDropFiles(event)
+        if (files.length === 0) return false
+
+        const { images: imageFiles, attachments: attachmentFiles } = partitionFiles(files)
+        if (imageFiles.length === 0 && attachmentFiles.length === 0) return false
 
         event.preventDefault()
         const dropPosition = view.posAtCoords({
@@ -518,7 +645,16 @@ export function FluxEditor({ initialContent = '', onChange, onEditorReady }) {
           top: event.clientY,
         })
 
-        void insertImageFiles(editor, imageFiles, dropPosition?.pos ?? null)
+        void (async () => {
+          const position = dropPosition?.pos ?? null
+          if (imageFiles.length) {
+            await insertImageFiles(editor, imageFiles, position)
+          }
+
+          if (attachmentFiles.length && isTauriRuntime) {
+            await insertAttachmentFiles(editor, attachmentFiles, attachmentCopy, position)
+          }
+        })()
         return true
       },
     },
@@ -535,11 +671,46 @@ export function FluxEditor({ initialContent = '', onChange, onEditorReady }) {
   useEffect(() => {
     if (!editor) return
 
-    const normalized = normalizeEditorContent(initialContent)
-    if (editor.getHTML() === normalized) return
+    let isCancelled = false
 
-    editor.commands.setContent(normalized, false)
-  }, [editor, initialContent])
+    const syncEditorContent = async () => {
+      const normalized = normalizeEditorContent(initialContent)
+      const hydrated = hasNativeMediaHint(normalized)
+        ? await rehydrateNativeMediaHtml(normalized, {
+            missingAltText: t('editor.missingLocalMedia'),
+            missingAttachmentText: t('editor.missingLocalAttachment'),
+            openAttachmentLabel: t('editor.openLocalAttachment'),
+            storedAttachmentLabel: t('editor.localAttachmentStored'),
+            unavailableAttachmentLabel: t('editor.localAttachmentUnavailable'),
+            attachmentKickerLabel: t('editor.localAttachmentKicker'),
+          })
+        : normalized
+      if (isCancelled) return
+      if (editor.getHTML() === hydrated) return
+
+      editor.commands.setContent(hydrated, false)
+    }
+
+    void syncEditorContent()
+
+    return () => {
+      isCancelled = true
+    }
+  }, [editor, initialContent, t])
+
+  useEffect(() => {
+    if (!editor?.view?.dom) return undefined
+
+    const dispose = attachNativeMediaIntegrityHandlers(editor.view.dom, {
+      missingAltText: t('editor.missingLocalMedia'),
+      missingAttachmentText: t('editor.missingLocalAttachment'),
+      unavailableAttachmentLabel: t('editor.localAttachmentUnavailable'),
+    })
+
+    return () => {
+      dispose()
+    }
+  }, [editor, initialContent, t])
 
   return (
     <section className="overflow-hidden rounded-[32px] border border-zinc-200/70 bg-white/55 shadow-[0_12px_40px_rgba(15,23,42,0.04)] backdrop-blur-sm">

@@ -14,6 +14,9 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
+    "verify:native-media": "node scripts/verify-native-media.mjs",
+    "verify:native-persistence": "node scripts/verify-native-persistence.mjs",
+    "verify:v2": "node scripts/verify-v2-readiness.mjs",
     "verify:phantom": "node scripts/verify-phantom.mjs",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build"

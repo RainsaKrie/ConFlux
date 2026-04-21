@@ -4,12 +4,17 @@ import { LazyStore } from '@tauri-apps/plugin-store'
 import { buildSeedFluxBlocks } from '../data/seedData'
 import { getInitialLanguage } from '../i18n/config'
 import { matchesDimensionValue } from '../utils/displayTag'
+import {
+  buildCorruptedStorageBackupKey,
+  buildCorruptedStorageBackupPayload,
+  serializeStorePayload,
+  validateSerializedStoragePayload,
+} from './persistenceRecovery'
 
 const MAX_BLOCK_REVISIONS = 5
 const MAX_POOL_EVENTS = 12
 const MAX_AI_TASKS = 12
 const STORE_SAVE_DEBOUNCE_MS = 800
-
 const INITIAL_LANGUAGE = getInitialLanguage()
 const isTauri = typeof window !== 'undefined' && Boolean(window.__TAURI_INTERNALS__)
 
@@ -37,6 +42,63 @@ function removeLegacyStorage(key) {
   window.localStorage.removeItem(key)
 }
 
+function backupCorruptedStorageEntry(name, source, rawValue, error) {
+  if (!canUseLocalStorage()) return
+
+  const backupKey = buildCorruptedStorageBackupKey({
+    source,
+    name,
+    timestamp: Date.now(),
+  })
+  const backupPayload = buildCorruptedStorageBackupPayload({
+    capturedAt: new Date().toISOString(),
+    error,
+    name,
+    rawValue,
+    source,
+  })
+
+  window.localStorage.setItem(backupKey, backupPayload)
+}
+
+function readValidatedLegacyStorage(name) {
+  const rawValue = readLegacyStorage(name)
+  if (!rawValue) return null
+
+  const validation = validateSerializedStoragePayload(rawValue)
+  if (validation.ok) {
+    return validation.value
+  }
+
+  console.warn('Legacy localStorage payload is invalid, resetting to defaults.', validation.error)
+  backupCorruptedStorageEntry(name, 'localStorage', rawValue, validation.error)
+    removeLegacyStorage(name)
+    return null
+}
+
+async function removeCorruptedTauriStoreEntry(name, rawValue, error) {
+  console.warn('Tauri Store payload is invalid, resetting to defaults.', error)
+  backupCorruptedStorageEntry(name, 'tauri-store', rawValue, error)
+
+  if (!tauriStore) return
+
+  await tauriStore.delete(name)
+  await tauriStore.save()
+}
+
+async function runScheduledStoreSave() {
+  try {
+    await tauriStore?.save()
+  } finally {
+    pendingStoreSaveTimer = null
+    pendingStoreSavePromise = null
+    if (pendingStoreSaveResolve) {
+      pendingStoreSaveResolve()
+      pendingStoreSaveResolve = null
+    }
+  }
+}
+
 async function scheduleStoreSave() {
   if (!tauriStore) return
   if (pendingStoreSavePromise) return pendingStoreSavePromise
@@ -49,31 +111,45 @@ async function scheduleStoreSave() {
     clearTimeout(pendingStoreSaveTimer)
   }
 
-  pendingStoreSaveTimer = setTimeout(async () => {
-    try {
-      await tauriStore.save()
-    } finally {
-      pendingStoreSaveTimer = null
-      pendingStoreSavePromise = null
-      if (pendingStoreSaveResolve) {
-        pendingStoreSaveResolve()
-        pendingStoreSaveResolve = null
-      }
-    }
+  pendingStoreSaveTimer = setTimeout(() => {
+    void runScheduledStoreSave()
   }, STORE_SAVE_DEBOUNCE_MS)
 
   return pendingStoreSavePromise
 }
 
+export async function flushPersistedStoreWrites() {
+  if (!tauriStore) return
+
+  if (pendingStoreSaveTimer) {
+    clearTimeout(pendingStoreSaveTimer)
+    await runScheduledStoreSave()
+    return
+  }
+
+  if (pendingStoreSavePromise) {
+    await pendingStoreSavePromise
+  }
+}
+
 const hybridPersistStorage = {
   getItem: async (name) => {
-    if (!isTauri || !tauriStore) return readLegacyStorage(name)
+    if (!isTauri || !tauriStore) return readValidatedLegacyStorage(name)
 
     try {
       const value = await tauriStore.get(name)
 
+      if (value !== null && typeof value !== 'undefined') {
+        try {
+          return serializeStorePayload(value)
+        } catch (error) {
+          await removeCorruptedTauriStoreEntry(name, value, error)
+          return readValidatedLegacyStorage(name)
+        }
+      }
+
       if (!value) {
-        const legacyData = readLegacyStorage(name)
+        const legacyData = readValidatedLegacyStorage(name)
         if (legacyData) {
           console.info('Detected legacy storage, migrating to Tauri Store.')
           const parsed = JSON.parse(legacyData)
@@ -83,10 +159,10 @@ const hybridPersistStorage = {
         }
       }
 
-      return value ? JSON.stringify(value) : null
+      return null
     } catch (error) {
       console.error('Tauri Store read failed, falling back to localStorage.', error)
-      return readLegacyStorage(name)
+      return readValidatedLegacyStorage(name)
     }
   },
   setItem: async (name, value) => {
@@ -261,12 +337,17 @@ function createRevisionEntry(block, revision, kind) {
 export const useFluxStore = create(
   persist(
     (set, get) => ({
+      hasHydrated: false,
       fluxBlocks: cloneSeedBlocks(INITIAL_LANGUAGE),
       savedPools: buildDefaultSavedPools(INITIAL_LANGUAGE),
       peekBlockId: null,
       activePoolContext: null,
       recentPoolEvents: [],
       recentAiTasks: [],
+      setHasHydrated: (hasHydrated) =>
+        set(() => ({
+          hasHydrated,
+        })),
       addBlock: (block) =>
         set((state) => ({
           fluxBlocks: [normalizeBlock({ ...block, revisions: block.revisions ?? [] }), ...state.fluxBlocks],
@@ -527,6 +608,12 @@ export const useFluxStore = create(
         recentAiTasks: state.recentAiTasks,
         recentPoolEvents: state.recentPoolEvents,
       }),
+      onRehydrateStorage: () => (state, error) => {
+        if (error) {
+          console.warn('Persisted store rehydration failed.', error)
+        }
+        state?.setHasHydrated(true)
+      },
     },
   ),
 )

@@ -4,6 +4,7 @@ import { Blocks, CircleDot, Hash, LayoutGrid, Link, List, LoaderCircle, Orbit, S
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { KnowledgeCard } from '../components/feed/KnowledgeCard'
 import { OmniFilterBar } from '../components/feed/OmniFilterBar'
+import { cleanupUnusedNativeMedia } from '../features/media/localMediaService'
 import {
   buildPoolContext,
   buildPoolContextKey,
@@ -341,14 +342,20 @@ export function FeedPage() {
     await handleSubmitCapture()
   }
 
-  const handleDeleteBlock = (block) => {
+  const handleDeleteBlock = async (block) => {
     const shouldDelete = window.confirm(
       t('feed.deleteConfirm', {
         title: block.title,
       }),
     )
     if (!shouldDelete) return
+
+    const remainingHtmlList = fluxBlocks
+      .filter((item) => item.id !== block.id)
+      .map((item) => item.content ?? '')
+
     deleteBlock(block.id)
+    await cleanupUnusedNativeMedia(block.content ?? '', remainingHtmlList)
   }
 
   const activeLabel = useMemo(() => {

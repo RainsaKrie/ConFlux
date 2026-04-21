@@ -1,14 +1,19 @@
 ﻿import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
+import { useRef } from 'react'
 import { Binary, Bot, CircleDot, Command, Compass, Settings, X } from 'lucide-react'
 import { NavLink, Outlet, useNavigate, useSearchParams } from 'react-router-dom'
 import { MetadataOverviewPanel } from '../components/sidebar/MetadataOverviewPanel'
 import { RecentAiTasksPanel } from '../components/sidebar/RecentAiTasksPanel'
 import { WindowTitlebar } from '../components/layout/WindowTitlebar'
-import { ensureMediaDirectory, isTauriRuntime } from '../features/media/localMediaService'
+import {
+  cleanupOrphanedNativeMediaFiles,
+  ensureMediaDirectory,
+  isTauriRuntime,
+} from '../features/media/localMediaService'
 import { buildPoolContext, buildPoolContextKey, encodePoolFilters, poolFiltersToTokens } from '../features/pools/utils'
 import { useTranslation } from '../i18n/I18nProvider'
-import { useFluxStore } from '../store/useFluxStore'
+import { flushPersistedStoreWrites, useFluxStore } from '../store/useFluxStore'
 import { DEFAULT_AI_CONFIG, isAiConfigReady, readAiConfig, saveAiConfig } from '../utils/aiConfig'
 import { displayDimensionValue } from '../utils/displayTag'
 
@@ -24,7 +29,9 @@ export function SidebarLayout() {
   const [isCommandOpen, setIsCommandOpen] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [config, setConfig] = useState(() => readAiConfig() ?? DEFAULT_AI_CONFIG)
+  const hasSweptOrphanMediaRef = useRef(false)
   const fluxBlocks = useFluxStore((state) => state.fluxBlocks)
+  const hasHydrated = useFluxStore((state) => state.hasHydrated)
   const savedPools = useFluxStore((state) => state.savedPools)
   const removePool = useFluxStore((state) => state.removePool)
   const activePoolContext = useFluxStore((state) => state.activePoolContext)
@@ -75,6 +82,44 @@ export function SidebarLayout() {
 
     return () => {
       isMounted = false
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isTauriRuntime || !hasHydrated || hasSweptOrphanMediaRef.current) return undefined
+
+    hasSweptOrphanMediaRef.current = true
+    const timeoutId = window.setTimeout(() => {
+      const referencedHtmlList = fluxBlocks.map((block) => block.content ?? '')
+      void cleanupOrphanedNativeMediaFiles(referencedHtmlList)
+    }, 1200)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [fluxBlocks, hasHydrated])
+
+  useEffect(() => {
+    if (!isTauriRuntime) return undefined
+
+    const flushPendingWrites = () => {
+      void flushPersistedStoreWrites()
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        flushPendingWrites()
+      }
+    }
+
+    window.addEventListener('beforeunload', flushPendingWrites)
+    window.addEventListener('pagehide', flushPendingWrites)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      window.removeEventListener('beforeunload', flushPendingWrites)
+      window.removeEventListener('pagehide', flushPendingWrites)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
     }
   }, [])
 

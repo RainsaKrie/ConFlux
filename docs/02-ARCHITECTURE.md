@@ -249,6 +249,7 @@ type FluxBlock = {
   - 通过原生文件系统承载图片与附件，不再继续使用 `IndexedDB` 作为富媒体主方案
   - `v2.0.x` 已进入实现态：Zustand persist 已切换为 Tauri Store 异步适配，首启会从 legacy `localStorage` 无损迁移并落盘到 `conflux_universe.json`
   - 当前前端适配已对齐 `createJSONStorage` 的字符串协议：Tauri 环境写入原生 Store，Web 环境自动回退到 `localStorage`
+  - 下一轮最近任务应优先补齐这条主线的结案能力：迁移恢复边界、真实落盘稳定性、媒体引用闭环与桌面/Web 边界说明
 - `v2.1`：`OS-Level Ergonomics`
   - 注册全局快捷键
   - 引入系统托盘与后台常驻宿主
@@ -266,6 +267,12 @@ type FluxBlock = {
 - `src-tauri/tauri.conf.json` 已配置 `beforeBuildCommand: npm run build`、`devUrl: http://localhost:5173`
 - 桌面窗口已切换为 `Conflux` 的无边框壳层，默认尺寸 `1280 x 800`
 - 前端顶层已接入一条极简 IPC 探针：在 Tauri 环境中静默调用 Rust `hello_conflux_desktop` 命令，用于验证桌面通信链路
+
+当前架构判断：
+
+- `v2.0-Alpha` 的壳层初始化已基本站住。
+- 下一轮默认主战役应进入 `v2.0 Native Persistence & Media`，把“已接入”推进到“可稳定交付”。
+- 下一轮默认收尾动作不再是继续发散功能，而是执行 `v2.0` 的桌面实机验收清单，验证迁移恢复、媒体闭环、孤儿回收与 Web fallback。
 
 ## 8. 架构问题归属表
 

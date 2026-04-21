@@ -2,6 +2,11 @@
 import { motion } from 'framer-motion'
 import { useEffect, useRef, useState } from 'react'
 import { Clock3, ExternalLink, GitMerge, Hash, LoaderCircle, Sparkles, X } from 'lucide-react'
+import {
+  attachNativeMediaIntegrityHandlers,
+  hasNativeMediaHint,
+  rehydrateNativeMediaHtml,
+} from '../../features/media/localMediaService'
 import { annotateOutlineHtml } from '../../features/editor/outline'
 import { resolveRecommendationUiState } from '../../features/recommendation/recommendationPresentation'
 import { RECOMMENDATION_POLICY } from '../../features/search/recommendationPolicy'
@@ -40,14 +45,15 @@ export function PeekDrawer({
   const { language, t } = useTranslation()
   const asideRef = useRef(null)
   const [activeOutlineId, setActiveOutlineId] = useState(null)
+  const [hydratedContent, setHydratedContent] = useState(peekBlock?.content ?? '')
 
   const peekHasSecondaryMetadata = useMemo(
     () => secondaryEditableDimensions.some((dimension) => (peekDimensions?.[dimension] ?? []).length > 0),
     [peekDimensions],
   )
   const peekOutline = useMemo(
-    () => annotateOutlineHtml(peekBlock?.content ?? '', { idPrefix: `peek-outline-${peekBlock?.id ?? 'block'}` }),
-    [peekBlock?.content, peekBlock?.id],
+    () => annotateOutlineHtml(hydratedContent, { idPrefix: `peek-outline-${peekBlock?.id ?? 'block'}` }),
+    [hydratedContent, peekBlock?.id],
   )
   const effectiveActiveOutlineId = useMemo(
     () => (
@@ -66,6 +72,32 @@ export function PeekDrawer({
     }),
     [t],
   )
+
+  useEffect(() => {
+    let isCancelled = false
+
+    const syncHydratedContent = async () => {
+      const nextRawContent = peekBlock?.content ?? ''
+      const nextContent = hasNativeMediaHint(nextRawContent)
+        ? await rehydrateNativeMediaHtml(nextRawContent, {
+            missingAltText: t('editor.missingLocalMedia'),
+            missingAttachmentText: t('editor.missingLocalAttachment'),
+            openAttachmentLabel: t('editor.openLocalAttachment'),
+            storedAttachmentLabel: t('editor.localAttachmentStored'),
+            unavailableAttachmentLabel: t('editor.localAttachmentUnavailable'),
+            attachmentKickerLabel: t('editor.localAttachmentKicker'),
+          })
+        : nextRawContent
+      if (isCancelled) return
+      setHydratedContent(nextContent)
+    }
+
+    void syncHydratedContent()
+
+    return () => {
+      isCancelled = true
+    }
+  }, [peekBlock?.content, t])
 
   useEffect(() => {
     if (!peekOutline.items.length) return undefined
@@ -106,6 +138,16 @@ export function PeekDrawer({
       window.removeEventListener('resize', resolveActiveHeading)
     }
   }, [peekOutline])
+
+  useEffect(() => {
+    if (!asideRef.current) return undefined
+
+    return attachNativeMediaIntegrityHandlers(asideRef.current, {
+      missingAltText: t('editor.missingLocalMedia'),
+      missingAttachmentText: t('editor.missingLocalAttachment'),
+      unavailableAttachmentLabel: t('editor.localAttachmentUnavailable'),
+    })
+  }, [hydratedContent, t])
 
   if (!peekBlock) return null
 
@@ -478,7 +520,7 @@ export function PeekDrawer({
         </div>
       ) : null}
 
-      {peekBlock.content?.trim() ? (
+      {hydratedContent?.trim() ? (
         <div
           className="prose-readable mt-8 text-[15px] leading-relaxed text-zinc-700"
           dangerouslySetInnerHTML={{ __html: peekOutline.html }}

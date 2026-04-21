@@ -15,6 +15,7 @@ import { OutlinerPanel } from '../components/editor/OutlinerPanel'
 import { PeekDrawer } from '../components/editor/PeekDrawer'
 import { extractOutlineFromEditor } from '../features/editor/outline'
 import { getCollapsedHeadingPositions } from '../components/editor/extensions/FoldingExtension'
+import { cleanupUnusedNativeMedia } from '../features/media/localMediaService'
 import {
   buildContextRecommendationEngine,
   buildDrawerSummary,
@@ -397,11 +398,23 @@ export function EditorPage() {
     const timestamp = getTodayStamp()
 
     if (activeBlockId) {
+      const previousContent = useFluxStore.getState().getBlockById(activeBlockId)?.content ?? ''
+
       updateBlock(activeBlockId, () => ({
         title: nextTitle,
         content: nextContent,
         updatedAt: timestamp,
       }))
+
+      if (previousContent !== nextContent) {
+        const remainingHtmlList = useFluxStore
+          .getState()
+          .fluxBlocks
+          .map((item) => item.content ?? '')
+
+        void cleanupUnusedNativeMedia(previousContent, remainingHtmlList)
+      }
+
       setSaveState(t('editor.saved'))
       return
     }
