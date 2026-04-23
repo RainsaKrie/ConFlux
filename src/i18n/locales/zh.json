@@ -32,8 +32,17 @@
     "model": "模型名称",
     "apiKey": "API 密钥",
     "saveAndClose": "保存并关闭",
-    "missingApiBanner": "AI 设置尚未完成。请补全接口地址、模型名称和 API 密钥后，再使用自动打标与原文更新。",
-    "openButton": "前往 AI 设置"
+    "missingApiBanner": "尚未配置大模型 API，自动打标与同化更新暂不可用。",
+    "openButton": "前往 AI 设置",
+    "dataStorageTitle": "数据与存储",
+    "runtimeLabel": "当前运行于",
+    "runtimeDesktopLabel": "Tauri 桌面端",
+    "runtimeWebLabel": "Web 浏览器",
+    "databaseFileLabel": "数据库文件",
+    "mediaDirectoryLabel": "本地多媒体目录",
+    "webStorageValue": "localStorage / flux_blocks_store",
+    "webMediaValue": "Data URL 内联回退",
+    "copyButton": "复制"
   },
   "feed": {
     "searchPlaceholder": "搜索笔记，或输入 # 添加筛选条件...",

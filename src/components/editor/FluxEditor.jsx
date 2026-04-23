@@ -27,11 +27,15 @@ import {
 import { useTranslation } from '../../i18n/I18nProvider'
 import {
   attachNativeMediaIntegrityHandlers,
+  getSafeAssetUrl,
   hasNativeMediaHint,
   isTauriRuntime,
   rehydrateNativeMediaHtml,
+  saveImageFile,
   saveMedia,
+  TAURI_MEDIA_ORIGIN,
 } from '../../features/media/localMediaService'
+import { MEDIA_DIRECTORY_NAME } from '../../features/media/mediaReference'
 import { useFluxStore } from '../../store/useFluxStore'
 import { contentToPlainText } from '../../utils/blocks'
 import { AdaptiveLensNode } from './extensions/AdaptiveLensNode'
@@ -159,23 +163,26 @@ function partitionFiles(files) {
   )
 }
 
-function readFileAsDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
+function buildImageInsertMetadata(filePath = '') {
+  const normalizedPath = String(filePath).replace(/\\/g, '/')
+  const isLocalFilePath = isTauriRuntime
+    && normalizedPath
+    && !normalizedPath.startsWith('data:')
+    && !normalizedPath.startsWith('asset:')
 
-    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '')
-    reader.onerror = () => reject(reader.error ?? new Error('Failed to read image file.'))
-    reader.readAsDataURL(file)
-  })
-}
-
-async function resolveEditorImageSource(file) {
-  if (isTauriRuntime) {
-    return saveMedia(file)
+  if (!isLocalFilePath) {
+    return {
+      fileName: null,
+      mediaOrigin: null,
+      mediaRelativePath: null,
+    }
   }
 
+  const fileName = normalizedPath.split('/').pop() ?? ''
   return {
-    src: await readFileAsDataUrl(file),
+    fileName,
+    mediaOrigin: fileName ? TAURI_MEDIA_ORIGIN : null,
+    mediaRelativePath: fileName ? `${MEDIA_DIRECTORY_NAME}/${fileName}` : null,
   }
 }
 
@@ -190,17 +197,20 @@ async function insertImageFiles(editor, files, insertPosition = null) {
 
   for (const [index, file] of files.entries()) {
     try {
-      const media = await resolveEditorImageSource(file)
+      const storedFilePath = await saveImageFile(file)
+      const safeUrl = await getSafeAssetUrl(storedFilePath)
+      const metadata = buildImageInsertMetadata(storedFilePath)
+
       editor
         .chain()
         .focus()
         .setImage({
-          src: media.src,
+          src: safeUrl,
           alt: createFileLabel(file, `image-${index + 1}`),
           title: createFileLabel(file, `image-${index + 1}`),
-          mediaFileName: media.fileName ?? null,
-          mediaOrigin: media.origin ?? null,
-          mediaRelativePath: media.relativePath ?? null,
+          mediaFileName: metadata.fileName,
+          mediaOrigin: metadata.mediaOrigin,
+          mediaRelativePath: metadata.mediaRelativePath,
         })
         .run()
     } catch (error) {

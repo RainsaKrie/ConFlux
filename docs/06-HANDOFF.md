@@ -128,6 +128,7 @@
 - 非 Tauri 环境下自动回退至 `localStorage`，保持 Web 调试不中断
 - 当前桌面端已验证真实文件落盘：`C:\Users\ROG\AppData\Roaming\com.conflux.desktop\conflux_universe.json` 已存在且包含 `flux_blocks_store`
 - 当前已补上损坏存储的安全回退与坏数据备份；窗口隐藏/关闭前也会主动冲刷待写入的 `Tauri Store`
+- 当前设置弹层已补上运行边界诊断卡：会明确显示当前是桌面 `Tauri` 还是纯 Web，会话持久化走 `conflux_universe.json` 还是 `localStorage`，媒体走 `$APPDATA/media/` 还是 `Data URL`，便于 `v2.0` 实机验收时快速确认真实主链
 
 下一步默认任务：
 

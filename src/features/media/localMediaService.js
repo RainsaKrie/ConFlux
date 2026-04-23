@@ -9,7 +9,9 @@ import {
   normalizeMediaRelativePath,
 } from './mediaReference'
 
-export const isTauriRuntime = typeof window !== 'undefined' && Boolean(window.__TAURI_INTERNALS__)
+const tauriWindow = typeof window !== 'undefined' ? window : null
+
+export const isTauriRuntime = Boolean(tauriWindow?.__TAURI__ || tauriWindow?.__TAURI_INTERNALS__)
 export const TAURI_MEDIA_ORIGIN = 'tauri-appdata'
 export const NATIVE_ATTACHMENT_TAG = 'attachment-card'
 
@@ -32,6 +34,16 @@ function buildRandomToken() {
   return Math.random().toString(36).slice(2, 10)
 }
 
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '')
+    reader.onerror = () => reject(reader.error ?? new Error('Failed to read image file.'))
+    reader.readAsDataURL(file)
+  })
+}
+
 function inferFileExtension(file) {
   const mimeType = file.type ?? ''
   if (mimeType.startsWith('image/')) {
@@ -41,6 +53,33 @@ function inferFileExtension(file) {
   const name = typeof file.name === 'string' ? file.name : ''
   const extension = name.split('.').pop()
   return extension && extension !== name ? extension.toLowerCase() : 'bin'
+}
+
+function buildImageFileName(file) {
+  const extension = inferFileExtension(file)
+  return `conflux_img_${Date.now()}_${buildRandomToken()}.${extension}`
+}
+
+function buildMediaFileName(file) {
+  const extension = inferFileExtension(file)
+  return `media_${Date.now()}_${buildRandomToken()}.${extension}`
+}
+
+async function writeNativeMediaFile(file, fileName) {
+  const mediaDirectory = await ensureMediaDirectory()
+  const relativePath = `${MEDIA_DIRECTORY_NAME}/${fileName}`
+  const absolutePath = await join(mediaDirectory, fileName)
+  const data = new Uint8Array(await file.arrayBuffer())
+
+  await writeFile(relativePath, data, {
+    baseDir: BaseDirectory.AppData,
+  })
+
+  return {
+    absolutePath,
+    fileName,
+    relativePath,
+  }
 }
 
 function buildMissingLabel(currentLabel = '', missingLabel = '') {
@@ -142,6 +181,12 @@ export async function resolveMediaSource(relativePath = '') {
 
   const absolutePath = await resolveMediaAbsolutePath(relativePath)
   return absolutePath ? convertFileSrc(absolutePath) : null
+}
+
+export async function getSafeAssetUrl(filePath = '') {
+  if (!filePath) return ''
+  if (!isTauriRuntime || String(filePath).startsWith('data:')) return filePath
+  return convertFileSrc(filePath)
 }
 
 export async function doesMediaExist(relativePath = '') {
@@ -339,28 +384,39 @@ export function attachNativeMediaIntegrityHandlers(container, options = {}) {
   }
 }
 
+export async function saveImageFile(file) {
+  if (!(file instanceof File)) {
+    throw new Error('saveImageFile expects a File object.')
+  }
+
+  if (!isTauriRuntime) {
+    return readFileAsDataUrl(file)
+  }
+
+  try {
+    const fileName = buildImageFileName(file)
+    const { absolutePath } = await writeNativeMediaFile(file, fileName)
+
+    return absolutePath
+  } catch (error) {
+    console.warn('Failed to persist image to native media directory, falling back to Data URL.', error)
+    return readFileAsDataUrl(file)
+  }
+}
+
 export async function saveMedia(file) {
   if (!isTauriRuntime) {
     throw new Error('Native media persistence is only available in Tauri.')
   }
 
-  const mediaDirectory = await ensureMediaDirectory()
-  const extension = inferFileExtension(file)
-  const fileName = `media_${Date.now()}_${buildRandomToken()}.${extension}`
-  const relativePath = `${MEDIA_DIRECTORY_NAME}/${fileName}`
-  const absolutePath = await join(mediaDirectory, fileName)
-  const data = new Uint8Array(await file.arrayBuffer())
-
-  await writeFile(relativePath, data, {
-    baseDir: BaseDirectory.AppData,
-  })
+  const { absolutePath, fileName, relativePath } = await writeNativeMediaFile(file, buildMediaFileName(file))
 
   return {
     fileName,
     filePath: absolutePath,
     origin: TAURI_MEDIA_ORIGIN,
     relativePath,
-    src: convertFileSrc(absolutePath),
+    src: await getSafeAssetUrl(absolutePath),
   }
 }
 

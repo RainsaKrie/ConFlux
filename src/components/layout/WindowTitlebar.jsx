@@ -3,7 +3,7 @@ import { Minus, Square, X } from 'lucide-react'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
 function resolveIsTauri() {
-  return typeof window !== 'undefined' && Boolean(window.__TAURI_INTERNALS__)
+  return typeof window !== 'undefined' && Boolean(window.__TAURI__ || window.__TAURI_INTERNALS__)
 }
 
 export function WindowTitlebar() {

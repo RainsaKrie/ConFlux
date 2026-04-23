@@ -82,6 +82,7 @@ Conflux 当前是一套纯前端 React MVP，技术栈为：
 - `src/features/search/vectorCacheService.js`：内存级向量快照缓存与异步预热
 - `src/features/metadata/`：补充元数据概览与轻量统计
 - `src/features/media/localMediaService.js`：桌面端媒体目录初始化、图片落盘与本地文件 URL 转换
+- `src/features/runtime/runtimeDiagnostics.js`：当前运行环境、持久化主路径与媒体主路径诊断
 - `src/features/graph/`：图谱渲染、搜索、相机控制与常量
 - `src/features/pools/`：Pool 上下文与筛选工具
 - `src/store/useFluxStore.js`：全局状态、持久化、revision、Pool 事件与本地 AI 任务记录
@@ -249,6 +250,7 @@ type FluxBlock = {
   - 通过原生文件系统承载图片与附件，不再继续使用 `IndexedDB` 作为富媒体主方案
   - `v2.0.x` 已进入实现态：Zustand persist 已切换为 Tauri Store 异步适配，首启会从 legacy `localStorage` 无损迁移并落盘到 `conflux_universe.json`
   - 当前前端适配已对齐 `createJSONStorage` 的字符串协议：Tauri 环境写入原生 Store，Web 环境自动回退到 `localStorage`
+  - 当前设置弹层已补上运行时边界诊断卡：会明确展示当前是 `Tauri` 桌面壳还是纯 Web 环境，以及持久化 / 媒体各自走的是 `conflux_universe.json + media/` 还是 `localStorage + Data URL` 路径，帮助 `v2.0` 验收快速确认真实主链
   - 下一轮最近任务应优先补齐这条主线的结案能力：迁移恢复边界、真实落盘稳定性、媒体引用闭环与桌面/Web 边界说明
 - `v2.1`：`OS-Level Ergonomics`
   - 注册全局快捷键

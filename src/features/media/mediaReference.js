@@ -1,4 +1,4 @@
-const MEDIA_FILE_NAME_PATTERN_SOURCE = String.raw`media_[^/?#&"']+\.[a-z0-9]+`
+const MEDIA_FILE_NAME_PATTERN_SOURCE = String.raw`(?:media|conflux_img)_[^/?#&"']+\.[a-z0-9]+`
 const MEDIA_PATH_ATTRIBUTE_PATTERN = /data-media-relative-path=(["'])([\s\S]*?)\1/gi
 const MEDIA_FILE_NAME_ATTRIBUTE_PATTERN = /data-media-file-name=(["'])([\s\S]*?)\1/gi
 const MEDIA_SOURCE_ATTRIBUTE_PATTERN = /(?:src|href|data-media-href)=(["'])([\s\S]*?)\1/gi

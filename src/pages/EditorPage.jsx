@@ -2,7 +2,7 @@
 import { useCallback } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Hash, Link, LoaderCircle, Orbit, Plus, Sparkles, X } from 'lucide-react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom'
 import {
   buildAssimilationSystemPrompt,
   buildAssimilationUserPrompt,
@@ -11,7 +11,6 @@ import {
 } from '../ai/prompts'
 import { AssimilationInlinePreviewModal } from '../components/assimilation/AssimilationInlinePreviewModal'
 import { EditorToolbar, FluxEditor } from '../components/editor/FluxEditor'
-import { OutlinerPanel } from '../components/editor/OutlinerPanel'
 import { PeekDrawer } from '../components/editor/PeekDrawer'
 import { extractOutlineFromEditor } from '../features/editor/outline'
 import { getCollapsedHeadingPositions } from '../components/editor/extensions/FoldingExtension'
@@ -172,6 +171,8 @@ function parseTagInputRoute(inputValue = '') {
 export function EditorPage() {
   const { language, t } = useTranslation()
   const navigate = useNavigate()
+  const outletContext = useOutletContext() ?? {}
+  const setSidebarOutliner = outletContext.setSidebarOutliner
   const [searchParams] = useSearchParams()
   const [saveState, setSaveState] = useState(() => t('editor.saved'))
   const [title, setTitle] = useState('')
@@ -1018,18 +1019,34 @@ export function EditorPage() {
     setDrawerSummary('')
   }, [drawerRecommendation?.targetBlockId, peekBlockId])
 
+  useEffect(() => {
+    if (typeof setSidebarOutliner !== 'function') return undefined
+
+    setSidebarOutliner({
+      activeId: effectiveActiveOutlineId,
+      collapsedIds: effectiveCollapsedOutlineIds,
+      emptyLabel: t('editor.outlineEmpty'),
+      items: outlineItems,
+      onJump: handleJumpToOutlineItem,
+      onToggleCollapse: handleToggleOutlineCollapse,
+      title: t('editor.outlineTitle'),
+    })
+
+    return () => {
+      setSidebarOutliner(null)
+    }
+  }, [
+    effectiveActiveOutlineId,
+    effectiveCollapsedOutlineIds,
+    handleJumpToOutlineItem,
+    handleToggleOutlineCollapse,
+    outlineItems,
+    setSidebarOutliner,
+    t,
+  ])
+
   return (
     <>
-      <OutlinerPanel
-        activeId={effectiveActiveOutlineId}
-        collapsedIds={effectiveCollapsedOutlineIds}
-        emptyLabel={t('editor.outlineEmpty')}
-        items={outlineItems}
-        onJump={handleJumpToOutlineItem}
-        onToggleCollapse={handleToggleOutlineCollapse}
-        title={t('editor.outlineTitle')}
-      />
-
       <MotionSection
         ref={sectionRef}
         initial={{ opacity: 0, y: 18 }}

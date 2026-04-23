@@ -32,8 +32,17 @@
     "model": "Model",
     "apiKey": "API key",
     "saveAndClose": "Save and close",
-    "missingApiBanner": "AI settings are incomplete. Add a base URL, model, and API key to enable auto-tagging and source updates.",
-    "openButton": "Open AI Settings"
+    "missingApiBanner": "No model API configured yet. Auto-tagging and source assimilation are currently unavailable.",
+    "openButton": "Open AI Settings",
+    "dataStorageTitle": "Data & Storage",
+    "runtimeLabel": "Current runtime",
+    "runtimeDesktopLabel": "Tauri desktop",
+    "runtimeWebLabel": "Web browser",
+    "databaseFileLabel": "Database file",
+    "mediaDirectoryLabel": "Local media directory",
+    "webStorageValue": "localStorage / flux_blocks_store",
+    "webMediaValue": "Inline Data URL fallback",
+    "copyButton": "Copy"
   },
   "feed": {
     "searchPlaceholder": "Search notes, or type # to add filters...",

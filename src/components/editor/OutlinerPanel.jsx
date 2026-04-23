@@ -13,9 +13,9 @@ export function OutlinerPanel({
   const { t } = useTranslation()
 
   return (
-    <aside className="pointer-events-none fixed left-8 top-1/3 z-20 hidden w-48 xl:block">
-      <div className="rounded-2xl border border-zinc-200/70 bg-white/72 px-3 py-3 text-[11px] font-medium leading-relaxed tracking-[0.08em] text-zinc-500 shadow-[0_14px_30px_rgba(15,23,42,0.05)] backdrop-blur-sm">
-        <div className="mb-2 text-[10px] uppercase tracking-[0.24em] text-zinc-400">{title}</div>
+    <aside className="mt-8 flex w-full flex-col">
+      <div className="bg-transparent py-4 text-[11px] leading-relaxed tracking-[0.08em] text-zinc-500">
+        <div className="mb-3 text-[11px] uppercase tracking-[0.24em] text-zinc-400">{title}</div>
         {items.length ? (
           <div className="space-y-1">
             {items.map((item) => {
@@ -25,7 +25,7 @@ export function OutlinerPanel({
               return (
                 <div
                   key={item.id}
-                  className={`pointer-events-auto flex items-center gap-1 border-l bg-transparent py-1 transition-colors ${
+                  className={`flex items-center gap-1 border-l bg-transparent py-1 transition-colors ${
                     isActive
                       ? 'border-zinc-700 text-zinc-900'
                       : item.level === 1
@@ -81,7 +81,7 @@ export function OutlinerPanel({
             })}
           </div>
         ) : (
-          <div className="text-[10px] font-normal leading-5 text-zinc-300">{emptyLabel}</div>
+          <div className="pl-2 text-xs leading-5 text-zinc-400/70">{emptyLabel}</div>
         )}
       </div>
     </aside>
