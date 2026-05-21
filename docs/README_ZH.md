@@ -127,6 +127,7 @@ API Key 只会用于前端直连你自己配置的大模型接口，不会被转
 | [04-CHANGELOG.md](./04-CHANGELOG.md) | 版本历史与里程碑追踪的唯一真相源 |
 | [05-MASTER-DIRECTIVE.md](./05-MASTER-DIRECTIVE.md) | 产品纪律：本地优先漏斗、零压迫 UI、双向知识生长 |
 | [06-HANDOFF.md](./06-HANDOFF.md) | 开发交接指南，用于在任何新会话中快速恢复项目状态 |
+| [07-REVERSE-ARCHITECTURE-WHITEPAPER.md](./07-REVERSE-ARCHITECTURE-WHITEPAPER.md) | 逆向架构白皮书：把产品设计意图映射到当前代码实现与扩展边界 |
 
 ---
 

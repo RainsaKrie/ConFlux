@@ -148,6 +148,7 @@ The `docs/` directory contains the full product and engineering context behind C
 | [04-CHANGELOG.md](./docs/04-CHANGELOG.md) | The single source of truth for version history and milestone tracking |
 | [05-MASTER-DIRECTIVE.md](./docs/05-MASTER-DIRECTIVE.md) | Core product discipline: local-first funnel, zero-pressure UI, and bi-directional growth |
 | [06-HANDOFF.md](./docs/06-HANDOFF.md) | Developer handoff guide for resuming work in any future session |
+| [07-REVERSE-ARCHITECTURE-WHITEPAPER.md](./docs/07-REVERSE-ARCHITECTURE-WHITEPAPER.md) | Reverse-engineered architecture whitepaper that maps product intent to concrete implementation |
 
 ---
 
