@@ -1,4 +1,4 @@
-﻿import { Trash2 } from 'lucide-react'
+import { AlertCircle, LoaderCircle, Trash2 } from 'lucide-react'
 import { useTranslation } from '../../i18n/I18nProvider'
 import { contentToPlainText } from '../../utils/blocks'
 import { displayDimensionValue } from '../../utils/displayTag'
@@ -15,6 +15,14 @@ export function KnowledgeCard({ block, onOpen, onDelete }) {
   const preview = contentToPlainText(block.content)
   const visibleDimensions = ['domain', 'format', 'project', 'stage']
   const sourceMetadata = (block.dimensions?.source ?? []).slice(0, 2)
+  const enrichmentStatus = block.aiEnrichment?.status
+  const enrichmentError = block.aiEnrichment?.lastError ?? ''
+  const hasFailedEnrichment = enrichmentStatus === 'failed'
+  const isQueuedEnrichment = enrichmentStatus === 'pending'
+  const isProcessingEnrichment = enrichmentStatus === 'processing'
+  const displayedEnrichmentError = /HTTP\s+404/i.test(enrichmentError)
+    ? t('feed.autoTagApiPathHint')
+    : enrichmentError || t('feed.autoTagUnknownError')
 
   return (
     <article className="group relative h-72 rounded-2xl border border-zinc-200/60 bg-white p-6 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
@@ -30,7 +38,7 @@ export function KnowledgeCard({ block, onOpen, onDelete }) {
                 {block.id}
               </span>
             </div>
-            <h3 className="mb-2 line-clamp-2 text-lg font-semibold tracking-tight text-zinc-900">
+            <h3 className="mb-2 truncate text-lg font-semibold tracking-tight text-zinc-900">
               {block.title}
             </h3>
           </div>
@@ -55,6 +63,32 @@ export function KnowledgeCard({ block, onOpen, onDelete }) {
         <div className="flex-1 overflow-hidden">
           <p className="line-clamp-5 text-sm leading-relaxed text-zinc-600">{preview}</p>
         </div>
+
+        {hasFailedEnrichment ? (
+          <div
+            className="mt-4 flex min-w-0 items-center gap-1.5 rounded-lg border border-rose-100 bg-rose-50 px-2.5 py-1.5 text-[11px] font-medium text-rose-600"
+            title={t('feed.autoTagCardFailed', { message: enrichmentError || displayedEnrichmentError })}
+          >
+            <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">
+              {t('feed.autoTagCardFailed', { message: displayedEnrichmentError })}
+            </span>
+          </div>
+        ) : null}
+
+        {isQueuedEnrichment ? (
+          <div className="mt-4 flex min-w-0 items-center gap-1.5 rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-1.5 text-[11px] font-medium text-zinc-600">
+            <LoaderCircle className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{t('feed.autoTagCardQueued')}</span>
+          </div>
+        ) : null}
+
+        {isProcessingEnrichment ? (
+          <div className="mt-4 flex min-w-0 items-center gap-1.5 rounded-lg border border-amber-100 bg-amber-50 px-2.5 py-1.5 text-[11px] font-medium text-amber-600">
+            <LoaderCircle className="h-3.5 w-3.5 shrink-0 animate-spin" />
+            <span className="truncate">{t('feed.autoTagCardProcessing')}</span>
+          </div>
+        ) : null}
 
         <div className="mt-5 flex flex-wrap gap-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
           {Object.entries(block.dimensions)

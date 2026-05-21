@@ -242,7 +242,7 @@ export function PeekDrawer({
       animate={{ x: 0 }}
       exit={{ x: '100%' }}
       transition={{ type: 'spring', stiffness: 280, damping: 30 }}
-      className="fixed top-0 right-0 z-50 h-screen w-[500px] overflow-y-auto border-l border-zinc-200/80 bg-white px-10 pb-10 pt-6 shadow-[-20px_0_60px_-15px_rgba(0,0,0,0.1)] md:w-[600px]"
+      className="fixed top-0 right-0 z-50 h-screen w-[500px] overflow-y-auto zen-scrollbar border-l border-zinc-200/80 bg-white px-10 pb-10 pt-6 shadow-[-20px_0_60px_-15px_rgba(0,0,0,0.1)] md:w-[600px]"
     >
       <div className="flex items-center justify-between gap-3">
         <button

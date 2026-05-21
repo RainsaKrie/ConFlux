@@ -1,6 +1,6 @@
 ﻿# Conflux 核心架构
 
-文档基线：`v1.1 已结案 / Next Milestone Pending`
+文档基线：`v2.0 Native Persistence & Media / Automated Checks Passing`
 
 ## 1. 架构定位
 
@@ -12,11 +12,11 @@
 - `v1.0` 的长文切块与线程串联主链
 - 已完成收口的 `v1.1` 混合召回主链
 
-因此当前工程称呼现在更新为：`v1.1 已结案，下一阶段待决`。
+因此当前工程阶段应表述为：`v1.1 / v1.2 已结案，默认主战役进入 v2.0 Native Persistence & Media`。
 
 ## 2. 当前技术基线
 
-Conflux 当前是一套纯前端 React MVP，技术栈为：
+Conflux 当前是一套 `React + Tauri` 双运行时 MVP，技术栈为：
 
 - `React 19`
 - `Vite 8`
@@ -72,23 +72,30 @@ Conflux 当前是一套纯前端 React MVP，技术栈为：
 - `src/pages/FeedPage.jsx`：Feed 组合层与 Quick Capture 主流程
 - `src/pages/EditorPage.jsx`：写作页组合层与状态编排
 - `src/pages/GraphPage.jsx`：图谱组合层
+- `src/components/editor/EditorSurface.jsx`：编辑器重型区块的二级 lazy 入口，用于压低 `/write` 首屏 route chunk
 - `src/components/editor/PeekDrawer.jsx`：右侧参考抽屉、推荐候选与版本历史
 - `src/components/assimilation/AssimilationPreviewModal.jsx`：原文更新预览弹层
 - `src/components/sidebar/`：侧边栏轻量管理组件
 - `src/components/editor/`：TipTap 编辑器与 `Adaptive Lens` 扩展
+- `src/components/editor/extensions/NativeAttachmentNodeView.jsx` / `NativeImageNodeView.jsx`：桌面本地附件与图片的渲染、恢复与打开入口
+- `src/features/feed/quickCaptureEnrichment.js`：速记 fallback 卡片的延迟 AI enrich 状态机与错误映射
 - `src/features/recommendation/`：段落级本地推荐引擎
 - `src/features/search/embedder.js`：浏览器侧 Wasm Embedding 单例与余弦相似度工具
 - `src/features/search/hybridSearch.js`：向量快照构建、双路召回融合与离线实验入口
 - `src/features/search/vectorCacheService.js`：内存级向量快照缓存与异步预热
 - `src/features/metadata/`：补充元数据概览与轻量统计
 - `src/features/media/localMediaService.js`：桌面端媒体目录初始化、图片落盘与本地文件 URL 转换
+- `src/features/media/nativeMediaCleanup.js` / `nativeMediaRecovery.js`：revision-safe 孤儿回收、缺失媒体退化与恢复 helper
+- `src/features/media/mediaFallbackDiagnostics.js` / `mediaMissingDiagnostics.js`：本地媒体 fallback / missing 诊断记录
 - `src/features/runtime/runtimeDiagnostics.js`：当前运行环境、持久化主路径与媒体主路径诊断
 - `src/features/graph/`：图谱渲染、搜索、相机控制与常量
 - `src/features/pools/`：Pool 上下文与筛选工具
 - `src/store/useFluxStore.js`：全局状态、持久化、revision、Pool 事件与本地 AI 任务记录
+- `src/store/hybridPersistStorage.js`：`Tauri Store + localStorage` 桥接、迁移、坏数据回退与退出前刷盘
 - `src/utils/documentChunker.js`：长文切块与线程标签
 - `src/utils/relations.js`：Feed / Graph 共用关系推导
 - `scripts/verify-phantom.mjs`：长文切块与本地推荐的极限回归入口
+- `scripts/verify-v2-readiness.mjs`：`v2.0` 聚合验收入口，串行执行持久化、媒体、配置、速记、构建与 bundle 检查
 - `src-tauri/`：桌面壳层、Rust 入口与后续本地能力接入点
 
 ## 5. 当前核心数据模型
@@ -251,11 +258,12 @@ type FluxBlock = {
   - `v2.0.x` 已进入实现态：Zustand persist 已切换为 Tauri Store 异步适配，首启会从 legacy `localStorage` 无损迁移并落盘到 `conflux_universe.json`
   - 当前前端适配已对齐 `createJSONStorage` 的字符串协议：Tauri 环境写入原生 Store，Web 环境自动回退到 `localStorage`
   - 当前设置弹层已补上运行时边界诊断卡：会明确展示当前是 `Tauri` 桌面壳还是纯 Web 环境，以及持久化 / 媒体各自走的是 `conflux_universe.json + media/` 还是 `localStorage + Data URL` 路径，帮助 `v2.0` 验收快速确认真实主链
+  - 当前 `verify:v2` 已成为默认自动验收入口，并补上 `verify:bundle` 以约束编辑器、Transformers 与 ONNX runtime 的构建体积边界
   - 下一轮最近任务应优先补齐这条主线的结案能力：迁移恢复边界、真实落盘稳定性、媒体引用闭环与桌面/Web 边界说明
 - `v2.1`：`OS-Level Ergonomics`
   - 注册全局快捷键
   - 引入系统托盘与后台常驻宿主
-  - `Local Media Engine` 已进入实现态：`FluxEditor` 会在 Tauri 环境下拦截粘贴/拖拽图片，借助 `plugin-fs` 将文件写入 `$APPDATA/media/`，再通过 `convertFileSrc()` 回填安全本地 URL；Web 环境则回退到 Data URL 插入策略
+  - 本地媒体引擎已前置并吸收到 `v2.0`，`v2.1` 不再单独承担图片/附件落盘与恢复主链
 - `v2.2`：`Advanced Views`
   - 在桌面底座稳定后再重启 `Infinite Canvas / Whiteboard`
   - 将高级属性治理与表格视图并入桌面数据视图层

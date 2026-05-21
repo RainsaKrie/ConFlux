@@ -3,18 +3,20 @@ import { AlertCircle, Check, LoaderCircle, Sparkles } from 'lucide-react'
 import { useTranslation } from '../../i18n/I18nProvider'
 
 const statusStyles = {
+  done: 'text-emerald-500',
   failed: 'text-rose-500',
   running: 'text-amber-500',
   succeeded: 'text-emerald-500',
 }
 
 const statusIcons = {
+  done: Check,
   failed: AlertCircle,
   running: LoaderCircle,
   succeeded: Check,
 }
 
-export function RecentAiTasksPanel({ tasks = [], onOpenBlock }) {
+export function RecentAiTasksPanel({ tasks = [], onClear, onOpenBlock }) {
   const { language, t } = useTranslation()
 
   const copy = useMemo(
@@ -28,9 +30,18 @@ export function RecentAiTasksPanel({ tasks = [], onOpenBlock }) {
 
   return (
     <div className="mt-8">
-      <div className="mb-3 text-[11px] uppercase tracking-[0.24em] text-zinc-400">{copy.title}</div>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-400">{copy.title}</div>
+        <button
+          type="button"
+          onClick={onClear}
+          className="text-[10px] font-medium text-zinc-300 transition-colors hover:text-zinc-600"
+        >
+          {t('common.clear')}
+        </button>
+      </div>
       <div className="space-y-2">
-        {tasks.slice(0, 4).map((task) => {
+        {tasks.slice(0, 3).map((task) => {
           const Icon = statusIcons[task.status] ?? Sparkles
           const isRunning = task.status === 'running'
 
@@ -46,14 +57,15 @@ export function RecentAiTasksPanel({ tasks = [], onOpenBlock }) {
                 }
               }}
               className="flex w-full items-start gap-2 rounded-2xl border border-zinc-200/70 bg-white px-3 py-2.5 text-left transition hover:bg-zinc-50"
+              title={task.message}
             >
               <Icon
                 className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${statusStyles[task.status] ?? 'text-zinc-400'} ${
                   isRunning ? 'animate-spin' : ''
                 }`}
               />
-              <div className="min-w-0">
-                <div className="truncate text-xs font-medium text-zinc-700">{task.message}</div>
+              <div className="min-w-0 flex-1">
+                <div className="line-clamp-2 text-xs font-medium leading-5 text-zinc-700">{task.message}</div>
                 <div className="mt-0.5 truncate text-[11px] text-zinc-400">
                   {task.targetBlockTitle || task.blockTitle || t('common.untitledNote')}
                 </div>

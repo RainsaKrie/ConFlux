@@ -4,10 +4,10 @@
 
 export function buildClassificationSystemPrompt(language = 'zh') {
   if (isEnglish(language)) {
-    return 'You are a careful knowledge tagging assistant. Do two things for the note: 1. Create a minimal title in under 10 words with no trailing punctuation. 2. Extract three fields: domain (max 2), format, and project (leave empty if none). Output valid JSON only: {"title":"Short title","domain":[],"format":[],"project":[]}. Respond in English only.'
+    return 'You are a careful knowledge tagging assistant. Do two things for the note: 1. Create a minimal title in under 10 words with no trailing punctuation. Preserve the central named concept or technical term exactly as written; do not replace it with a generic abstraction. 2. Extract three fields: domain (max 2), format, and project (leave empty if none). Output valid JSON only: {"title":"Short title","domain":[],"format":[],"project":[]}. Respond in English only.'
   }
 
-  return '我传给你一段笔记。请帮我完成两件事：1. 为这段笔记起一个极简的标题（10个字以内，不要任何标点符号）。2. 提取3个维度：domain(领域,最多2个)、format(体裁)、project(项目实体名,没有则留空)。所有输出必须使用【简体中文】。强制输出合法JSON：{"title":"概括性短标题", "domain":[],"format":[],"project":[]}。除 JSON 外不要输出任何多余字符。'
+  return '我传给你一段笔记。请帮我完成两件事：1. 为这段笔记起一个极简的标题（10个字以内，不要任何标点符号）。如果原文围绕一个明确的英文术语、产品名、人名、项目名或专有概念，请在标题中原样保留该核心词，不要把它翻译或替换成“主体、概念、机制、方法”等泛化抽象词。2. 提取3个维度：domain(领域,最多2个)、format(体裁)、project(项目实体名,没有则留空)。所有输出必须使用【简体中文】，但专有名词和英文术语必须保留原文。强制输出合法JSON：{"title":"概括性短标题", "domain":[],"format":[],"project":[]}。除 JSON 外不要输出任何多余字符。'
 }
 
 export function buildClassificationUserPrompt(content, language = 'zh') {

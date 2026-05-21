@@ -165,7 +165,7 @@ export function OmniFilterBar({
             exit={{ opacity: 0, y: 4, scale: 0.98 }}
             className="absolute left-0 right-0 top-[calc(100%+8px)] z-20 overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm"
           >
-            <div className="max-h-[280px] overflow-y-auto p-2">
+            <div className="max-h-[280px] overflow-y-auto p-2 zen-scrollbar">
               {filteredSuggestions.map((suggestion, index) => (
                 <button
                   key={`${suggestion.dimension}-${suggestion.value}`}

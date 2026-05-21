@@ -1,5 +1,6 @@
 ﻿import { convertFileSrc } from '@tauri-apps/api/core'
 import { appDataDir, BaseDirectory, join } from '@tauri-apps/api/path'
+import { invoke } from '@tauri-apps/api/core'
 import { exists, mkdir, readDir, remove, writeFile } from '@tauri-apps/plugin-fs'
 import {
   collectNativeMediaRelativePaths,
@@ -7,7 +8,16 @@ import {
   MEDIA_DIRECTORY_NAME,
   MEDIA_FILE_NAME_PATTERN,
   normalizeMediaRelativePath,
-} from './mediaReference'
+} from './mediaReference.js'
+import { computeOrphanedNativeMediaPaths } from './nativeMediaCleanup.js'
+import {
+  describeAvailableAttachmentState,
+  describeAvailableImageState,
+  describeMissingAttachmentState,
+  describeMissingImageState,
+} from './nativeMediaRecovery.js'
+import { recordMediaFallbackDiagnostic } from './mediaFallbackDiagnostics.js'
+import { recordMediaMissingDiagnostic } from './mediaMissingDiagnostics.js'
 
 const tauriWindow = typeof window !== 'undefined' ? window : null
 
@@ -25,6 +35,17 @@ const MISSING_MEDIA_PLACEHOLDER = encodeURIComponent(`
 `)
 const MISSING_MEDIA_PLACEHOLDER_SRC = `data:image/svg+xml;charset=utf-8,${MISSING_MEDIA_PLACEHOLDER}`
 let mediaDirectoryPromise = null
+
+function recordMissingMediaEvent({ detection = '', kind = '', relativePath = '' } = {}) {
+  const normalizedPath = normalizeMediaRelativePath(relativePath)
+  if (!kind || !normalizedPath) return
+
+  recordMediaMissingDiagnostic({
+    detection,
+    kind,
+    relativePath: normalizedPath,
+  })
+}
 
 function buildRandomToken() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -82,10 +103,6 @@ async function writeNativeMediaFile(file, fileName) {
   }
 }
 
-function buildMissingLabel(currentLabel = '', missingLabel = '') {
-  return currentLabel.trim() ? `${currentLabel} · ${missingLabel}` : missingLabel
-}
-
 function inferMediaRelativePathFromElement(element) {
   if (!(element instanceof Element)) return ''
 
@@ -128,10 +145,25 @@ function applyMissingMediaState(image, missingAltText = 'Local media is unavaila
   if (!(image instanceof HTMLImageElement)) return
   if (image.dataset.mediaMissing === 'true') return
 
-  image.dataset.mediaMissing = 'true'
-  image.src = MISSING_MEDIA_PLACEHOLDER_SRC
-  image.alt = buildMissingLabel(image.alt ?? '', missingAltText)
-  image.title = missingAltText
+  const relativePath = normalizeMediaRelativePath(image.dataset.mediaRelativePath ?? '')
+  if (relativePath) {
+    recordMissingMediaEvent({
+      detection: 'runtime',
+      kind: 'image',
+      relativePath,
+    })
+  }
+
+  const state = describeMissingImageState({
+    currentAlt: image.alt ?? '',
+    missingAltText,
+    placeholderSrc: MISSING_MEDIA_PLACEHOLDER_SRC,
+  })
+
+  image.dataset.mediaMissing = state.mediaMissing
+  image.src = state.src
+  image.alt = state.alt
+  image.title = state.title
 }
 
 function applyMissingAttachmentState(
@@ -143,10 +175,24 @@ function applyMissingAttachmentState(
 ) {
   if (!(element instanceof Element)) return
 
-  element.setAttribute('data-media-missing', 'true')
-  element.removeAttribute('data-media-href')
-  element.setAttribute('title', missingAttachmentText)
-  element.setAttribute('data-unavailable-label', unavailableAttachmentLabel)
+  const relativePath = normalizeMediaRelativePath(element.getAttribute('data-media-relative-path') ?? '')
+  if (relativePath) {
+    recordMissingMediaEvent({
+      detection: 'runtime',
+      kind: 'attachment',
+      relativePath,
+    })
+  }
+
+  const state = describeMissingAttachmentState({
+    missingAttachmentText,
+    unavailableAttachmentLabel,
+  })
+
+  element.setAttribute('data-media-missing', state.mediaMissing)
+  state.removeAttributes.forEach((attributeName) => element.removeAttribute(attributeName))
+  element.setAttribute('title', state.title)
+  element.setAttribute('data-unavailable-label', state.unavailableAttachmentLabel)
 }
 
 export async function ensureMediaDirectory() {
@@ -171,6 +217,10 @@ export async function ensureMediaDirectory() {
   return mediaDirectoryPromise
 }
 
+export async function ensureMediaDir() {
+  return ensureMediaDirectory()
+}
+
 export async function resolveMediaAbsolutePath(relativePath = '') {
   if (!isTauriRuntime || !relativePath) return null
   return join(await appDataDir(), relativePath)
@@ -189,12 +239,86 @@ export async function getSafeAssetUrl(filePath = '') {
   return convertFileSrc(filePath)
 }
 
+export async function getAssetUrl(filePath = '') {
+  return getSafeAssetUrl(filePath)
+}
+
+export async function openNativeMedia(relativePath = '', fallbackHref = '') {
+  if (!isTauriRuntime) {
+    if (fallbackHref && typeof window !== 'undefined') {
+      window.open(fallbackHref, '_blank', 'noopener,noreferrer')
+    }
+    return false
+  }
+
+  const normalizedPath = normalizeMediaRelativePath(relativePath)
+  if (!normalizedPath) {
+    throw new Error('openNativeMedia expects a media relative path.')
+  }
+
+  try {
+    await invoke('open_native_media', {
+      relativePath: normalizedPath,
+    })
+    return true
+  } catch (error) {
+    console.error('Failed to open native media file.', error)
+    if (fallbackHref && typeof window !== 'undefined') {
+      window.open(fallbackHref, '_blank', 'noopener,noreferrer')
+    }
+    return false
+  }
+}
+
 export async function doesMediaExist(relativePath = '') {
   if (!isTauriRuntime || !relativePath) return false
 
   return exists(relativePath, {
     baseDir: BaseDirectory.AppData,
   })
+}
+
+function collectBlockMediaHtmlFragments(block = {}) {
+  const fragments = []
+
+  if (typeof block.content === 'string') {
+    fragments.push(block.content)
+  }
+
+  if (Array.isArray(block.revisions)) {
+    block.revisions.forEach((revision) => {
+      if (typeof revision?.beforeContent === 'string') {
+        fragments.push(revision.beforeContent)
+      }
+
+      if (typeof revision?.afterContent === 'string') {
+        fragments.push(revision.afterContent)
+      }
+    })
+  }
+
+  return fragments
+}
+
+export function collectActiveMediaReferenceHtmlList(blocks = []) {
+  if (!Array.isArray(blocks)) return []
+
+  return blocks.flatMap((block) => collectBlockMediaHtmlFragments(block))
+}
+
+export function extractActiveMediaFiles(blocks = []) {
+  const activeFileNames = new Set()
+
+  collectActiveMediaReferenceHtmlList(blocks)
+    .flatMap((html) => collectNativeMediaRelativePaths(html))
+    .forEach((relativePath) => {
+      const fileName = relativePath.split('/').pop() ?? ''
+      if (fileName && MEDIA_FILE_NAME_PATTERN.test(fileName)) {
+        activeFileNames.add(fileName)
+      }
+    })
+
+  return activeFileNames
 }
 
 export async function cleanupUnusedNativeMedia(removedHtml = '', remainingHtmlList = []) {
@@ -224,27 +348,50 @@ export async function cleanupUnusedNativeMedia(removedHtml = '', remainingHtmlLi
   return deletedPaths
 }
 
-export async function cleanupOrphanedNativeMediaFiles(referencedHtmlList = []) {
+export async function cleanupOrphanMedia(blocks = []) {
   if (!isTauriRuntime) return []
 
-  const referencedPaths = new Set(
-    (Array.isArray(referencedHtmlList) ? referencedHtmlList : [])
-      .flatMap((html) => collectNativeMediaRelativePaths(html)),
-  )
+  try {
+    const activeFileNames = extractActiveMediaFiles(blocks)
+    const entries = await readDir(MEDIA_DIRECTORY_NAME, {
+      baseDir: BaseDirectory.AppData,
+    })
+    const deletedFileNames = []
+
+    for (const entry of entries) {
+      const fileName = entry?.name ?? ''
+      if (!fileName || !MEDIA_FILE_NAME_PATTERN.test(fileName)) continue
+      if (activeFileNames.has(fileName)) continue
+
+      try {
+        await remove(`${MEDIA_DIRECTORY_NAME}/${fileName}`, {
+          baseDir: BaseDirectory.AppData,
+        })
+        deletedFileNames.push(fileName)
+        console.info(`[Media GC] Removed orphan file: ${fileName}`)
+      } catch (error) {
+        console.warn('[Media GC] Failed to remove orphan file.', fileName, error)
+      }
+    }
+
+    return deletedFileNames
+  } catch (error) {
+    console.warn('[Media GC] Failed to scan native media directory.', error)
+    return []
+  }
+}
+
+export async function cleanupOrphanedNativeMediaFiles(referencedHtmlList = []) {
+  if (!isTauriRuntime) return []
 
   try {
     const entries = await readDir(MEDIA_DIRECTORY_NAME, {
       baseDir: BaseDirectory.AppData,
     })
+    const orphanedPaths = computeOrphanedNativeMediaPaths(entries, referencedHtmlList)
     const deletedPaths = []
 
-    for (const entry of entries) {
-      const fileName = entry?.name ?? ''
-      if (!fileName || !MEDIA_FILE_NAME_PATTERN.test(fileName)) continue
-
-      const relativePath = `${MEDIA_DIRECTORY_NAME}/${fileName}`
-      if (referencedPaths.has(relativePath)) continue
-
+    for (const relativePath of orphanedPaths) {
       try {
         await remove(relativePath, {
           baseDir: BaseDirectory.AppData,
@@ -289,21 +436,30 @@ export async function rehydrateNativeMediaHtml(html = '', options = {}) {
 
     const existsOnDisk = await doesMediaExist(relativePath)
     if (!existsOnDisk) {
-      image.setAttribute('data-media-missing', 'true')
-      image.setAttribute('src', MISSING_MEDIA_PLACEHOLDER_SRC)
-      image.setAttribute(
-        'alt',
-        buildMissingLabel(image.getAttribute('alt') ?? '', missingAltText),
-      )
-      image.setAttribute('title', missingAltText)
+      recordMissingMediaEvent({
+        detection: 'rehydrate',
+        kind: 'image',
+        relativePath,
+      })
+      const state = describeMissingImageState({
+        currentAlt: image.getAttribute('alt') ?? '',
+        missingAltText,
+        placeholderSrc: MISSING_MEDIA_PLACEHOLDER_SRC,
+      })
+
+      image.setAttribute('data-media-missing', state.mediaMissing)
+      image.setAttribute('src', state.src)
+      image.setAttribute('alt', state.alt)
+      image.setAttribute('title', state.title)
       continue
     }
 
     const src = await resolveMediaSource(relativePath)
     if (src) {
-      image.setAttribute('src', src)
-      image.removeAttribute('data-media-missing')
-      image.removeAttribute('title')
+      const state = describeAvailableImageState(src)
+
+      image.setAttribute('src', state.src)
+      state.removeAttributes.forEach((attributeName) => image.removeAttribute(attributeName))
     }
   }
 
@@ -320,6 +476,11 @@ export async function rehydrateNativeMediaHtml(html = '', options = {}) {
 
     const existsOnDisk = await doesMediaExist(relativePath)
     if (!existsOnDisk) {
+      recordMissingMediaEvent({
+        detection: 'rehydrate',
+        kind: 'attachment',
+        relativePath,
+      })
       applyMissingAttachmentState(attachment, {
         missingAttachmentText,
         unavailableAttachmentLabel,
@@ -329,9 +490,10 @@ export async function rehydrateNativeMediaHtml(html = '', options = {}) {
 
     const href = await resolveMediaSource(relativePath)
     if (href) {
-      attachment.setAttribute('data-media-href', href)
-      attachment.removeAttribute('data-media-missing')
-      attachment.removeAttribute('title')
+      const state = describeAvailableAttachmentState(href)
+
+      attachment.setAttribute('data-media-href', state.href)
+      state.removeAttributes.forEach((attributeName) => attachment.removeAttribute(attributeName))
     }
   }
 
@@ -371,6 +533,20 @@ export function attachNativeMediaIntegrityHandlers(container, options = {}) {
     annotateElementWithMediaMetadata(attachment)
     if (attachment.getAttribute('data-media-origin') !== TAURI_MEDIA_ORIGIN) return
 
+    const action = attachment.querySelector('.flux-attachment-action')
+    const relativePath = normalizeMediaRelativePath(attachment.getAttribute('data-media-relative-path') ?? '')
+    const href = attachment.getAttribute('data-media-href') ?? ''
+    if (action instanceof HTMLElement && relativePath && attachment.getAttribute('data-media-missing') !== 'true') {
+      const handleOpen = (event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        void openNativeMedia(relativePath, href)
+      }
+
+      action.addEventListener('click', handleOpen)
+      teardown.push(() => action.removeEventListener('click', handleOpen))
+    }
+
     if (attachment.getAttribute('data-media-missing') === 'true') {
       applyMissingAttachmentState(attachment, {
         missingAttachmentText,
@@ -390,17 +566,33 @@ export async function saveImageFile(file) {
   }
 
   if (!isTauriRuntime) {
-    return readFileAsDataUrl(file)
+    return {
+      filePath: await readFileAsDataUrl(file),
+      fallbackReason: '',
+      persistence: 'web-inline',
+    }
   }
 
   try {
     const fileName = buildImageFileName(file)
     const { absolutePath } = await writeNativeMediaFile(file, fileName)
 
-    return absolutePath
+    return {
+      filePath: absolutePath,
+      fallbackReason: '',
+      persistence: 'native-file',
+    }
   } catch (error) {
-    console.warn('Failed to persist image to native media directory, falling back to Data URL.', error)
-    return readFileAsDataUrl(file)
+    console.error('Failed to persist image to native media directory, falling back to Data URL.', error)
+    recordMediaFallbackDiagnostic({
+      count: 1,
+      reason: error instanceof Error ? error.message : String(error),
+    })
+    return {
+      filePath: await readFileAsDataUrl(file),
+      fallbackReason: error instanceof Error ? error.message : String(error),
+      persistence: 'inline-fallback',
+    }
   }
 }
 
@@ -409,14 +601,19 @@ export async function saveMedia(file) {
     throw new Error('Native media persistence is only available in Tauri.')
   }
 
-  const { absolutePath, fileName, relativePath } = await writeNativeMediaFile(file, buildMediaFileName(file))
+  try {
+    const { absolutePath, fileName, relativePath } = await writeNativeMediaFile(file, buildMediaFileName(file))
 
-  return {
-    fileName,
-    filePath: absolutePath,
-    origin: TAURI_MEDIA_ORIGIN,
-    relativePath,
-    src: await getSafeAssetUrl(absolutePath),
+    return {
+      fileName,
+      filePath: absolutePath,
+      origin: TAURI_MEDIA_ORIGIN,
+      relativePath,
+      src: await getAssetUrl(absolutePath),
+    }
+  } catch (error) {
+    console.error('Failed to persist attachment to native media directory.', error)
+    throw error
   }
 }
 

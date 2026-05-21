@@ -1,14 +1,14 @@
 ﻿import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useRef } from 'react'
-import { Binary, Bot, CircleDot, Command, Compass, Settings, X } from 'lucide-react'
+import { Binary, Bot, Check, CircleDot, Command, Compass, Copy, Settings, X } from 'lucide-react'
 import { NavLink, Outlet, useNavigate, useSearchParams } from 'react-router-dom'
 import { OutlinerPanel } from '../components/editor/OutlinerPanel'
 import { MetadataOverviewPanel } from '../components/sidebar/MetadataOverviewPanel'
 import { RecentAiTasksPanel } from '../components/sidebar/RecentAiTasksPanel'
 import { WindowTitlebar } from '../components/layout/WindowTitlebar'
 import {
-  cleanupOrphanedNativeMediaFiles,
+  cleanupOrphanMedia,
   ensureMediaDirectory,
   isTauriRuntime,
 } from '../features/media/localMediaService'
@@ -16,10 +16,23 @@ import { buildPoolContext, buildPoolContextKey, encodePoolFilters, poolFiltersTo
 import {
   getInitialRuntimeDiagnostics,
   getRuntimeDiagnostics,
+  openRuntimeDiagnosticLocation,
 } from '../features/runtime/runtimeDiagnostics'
+import {
+  clearFallbackDiagnostic,
+  MEDIA_FALLBACK_DIAGNOSTIC_EVENT,
+} from '../features/media/mediaFallbackDiagnostics'
+import {
+  clearMediaMissingDiagnostic,
+  MEDIA_MISSING_DIAGNOSTIC_EVENT,
+} from '../features/media/mediaMissingDiagnostics'
 import { useTranslation } from '../i18n/I18nProvider'
+import {
+  clearPersistenceRecoveryDiagnostic,
+  PERSISTENCE_RECOVERY_DIAGNOSTIC_EVENT,
+} from '../store/persistenceRecoveryDiagnostics'
 import { flushPersistedStoreWrites, useFluxStore } from '../store/useFluxStore'
-import { DEFAULT_AI_CONFIG, isAiConfigReady, readAiConfig, saveAiConfig } from '../utils/aiConfig'
+import { DEFAULT_AI_CONFIG, isAiConfigReady, readAiConfig, saveAiConfig, subscribeAiConfig } from '../utils/aiConfig'
 import { displayDimensionValue } from '../utils/displayTag'
 
 const MotionDiv = motion.div
@@ -33,10 +46,13 @@ export function SidebarLayout() {
   const [searchParams] = useSearchParams()
   const [isCommandOpen, setIsCommandOpen] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [copiedDiagnosticKey, setCopiedDiagnosticKey] = useState('')
+  const [openingDiagnosticKey, setOpeningDiagnosticKey] = useState('')
   const [config, setConfig] = useState(() => readAiConfig() ?? DEFAULT_AI_CONFIG)
   const [runtimeDiagnostics, setRuntimeDiagnostics] = useState(() => getInitialRuntimeDiagnostics())
   const [sidebarOutliner, setSidebarOutliner] = useState(null)
   const hasSweptOrphanMediaRef = useRef(false)
+  const copiedDiagnosticTimeoutRef = useRef(null)
   const fluxBlocks = useFluxStore((state) => state.fluxBlocks)
   const hasHydrated = useFluxStore((state) => state.hasHydrated)
   const savedPools = useFluxStore((state) => state.savedPools)
@@ -44,6 +60,7 @@ export function SidebarLayout() {
   const activePoolContext = useFluxStore((state) => state.activePoolContext)
   const clearActivePoolContext = useFluxStore((state) => state.clearActivePoolContext)
   const recentAiTasks = useFluxStore((state) => state.recentAiTasks)
+  const clearAiTasks = useFluxStore((state) => state.clearAiTasks)
   const removeDimensionValueFromAllBlocks = useFluxStore((state) => state.removeDimensionValueFromAllBlocks)
   const setActivePoolContext = useFluxStore((state) => state.setActivePoolContext)
   const activeFiltersToken = searchParams.get('filters')
@@ -67,14 +84,13 @@ export function SidebarLayout() {
   )
 
   useEffect(() => {
-    const handleStorage = (event) => {
-      if (!event.key || event.key === 'flux_ai_config') {
-        setConfig(readAiConfig())
-      }
-    }
+    return subscribeAiConfig((nextConfig) => {
+      setConfig(nextConfig)
+    })
+  }, [])
 
-    window.addEventListener('storage', handleStorage)
-    return () => window.removeEventListener('storage', handleStorage)
+  useEffect(() => () => {
+    window.clearTimeout(copiedDiagnosticTimeoutRef.current)
   }, [])
 
   useEffect(() => {
@@ -89,8 +105,27 @@ export function SidebarLayout() {
 
     void syncRuntimeDiagnostics()
 
+    const handleMediaFallbackDiagnostic = () => {
+      void syncRuntimeDiagnostics()
+    }
+
+    const handleMediaMissingDiagnostic = () => {
+      void syncRuntimeDiagnostics()
+    }
+
+    const handlePersistenceRecoveryDiagnostic = () => {
+      void syncRuntimeDiagnostics()
+    }
+
+    window.addEventListener(MEDIA_FALLBACK_DIAGNOSTIC_EVENT, handleMediaFallbackDiagnostic)
+    window.addEventListener(MEDIA_MISSING_DIAGNOSTIC_EVENT, handleMediaMissingDiagnostic)
+    window.addEventListener(PERSISTENCE_RECOVERY_DIAGNOSTIC_EVENT, handlePersistenceRecoveryDiagnostic)
+
     return () => {
       isCancelled = true
+      window.removeEventListener(MEDIA_FALLBACK_DIAGNOSTIC_EVENT, handleMediaFallbackDiagnostic)
+      window.removeEventListener(MEDIA_MISSING_DIAGNOSTIC_EVENT, handleMediaMissingDiagnostic)
+      window.removeEventListener(PERSISTENCE_RECOVERY_DIAGNOSTIC_EVENT, handlePersistenceRecoveryDiagnostic)
     }
   }, [])
 
@@ -114,9 +149,8 @@ export function SidebarLayout() {
 
     hasSweptOrphanMediaRef.current = true
     const timeoutId = window.setTimeout(() => {
-      const referencedHtmlList = fluxBlocks.map((block) => block.content ?? '')
-      void cleanupOrphanedNativeMediaFiles(referencedHtmlList)
-    }, 1200)
+      void cleanupOrphanMedia(fluxBlocks)
+    }, 7000)
 
     return () => {
       window.clearTimeout(timeoutId)
@@ -189,14 +223,93 @@ export function SidebarLayout() {
   const mediaLocation = runtimeDiagnostics.runtime === 'desktop'
     ? runtimeDiagnostics.media.locationValue
     : t('settings.webMediaValue')
+  const latestMediaFallback = runtimeDiagnostics.media.lastFallback ?? null
+  const latestMediaMissing = runtimeDiagnostics.media.lastMissing ?? null
+  const latestPersistenceRecovery = runtimeDiagnostics.persistence.lastRecovery ?? null
+  const formatDiagnosticTimestamp = (timestamp, fallbackLabel) =>
+    timestamp
+      ? new Intl.DateTimeFormat(language === 'en' ? 'en-US' : 'zh-CN', {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      }).format(new Date(timestamp))
+      : fallbackLabel
+  const latestPersistenceRecoveryTime = formatDiagnosticTimestamp(
+    latestPersistenceRecovery?.timestamp,
+    t('settings.persistenceRecoveryNever'),
+  )
+  const latestMediaFallbackTime = latestMediaFallback?.timestamp
+    ? formatDiagnosticTimestamp(latestMediaFallback.timestamp, t('settings.mediaFallbackNever'))
+    : t('settings.mediaFallbackNever')
+  const latestMediaMissingTime = latestMediaMissing?.timestamp
+    ? formatDiagnosticTimestamp(latestMediaMissing.timestamp, t('settings.mediaMissingNever'))
+    : t('settings.mediaMissingNever')
+  const persistenceRecoverySourceLabel = latestPersistenceRecovery?.source === 'tauri-store'
+    ? t('settings.persistenceRecoverySourceTauri')
+    : t('settings.persistenceRecoverySourceLocalStorage')
+  const persistenceRecoveryFallbackLabel = latestPersistenceRecovery?.fallbackTarget === 'legacy-mirror'
+    ? t('settings.persistenceRecoveryFallbackMirror')
+    : t('settings.persistenceRecoveryFallbackDefaults')
+  const latestPersistenceRecoverySummary = latestPersistenceRecovery
+    ? t('settings.persistenceRecoverySummary', {
+      fallback: persistenceRecoveryFallbackLabel,
+      name: latestPersistenceRecovery.name,
+      source: persistenceRecoverySourceLabel,
+    })
+    : t('settings.persistenceRecoveryNone')
+  const latestPersistenceRecoveryRawError = latestPersistenceRecovery?.rawError?.trim()
+    ?? latestPersistenceRecovery?.reason?.trim()
+    ?? ''
+  const latestPersistenceRecoveryBackupKey = latestPersistenceRecovery?.backupKey?.trim() ?? ''
+  const latestMediaFallbackSummary = latestMediaFallback
+    ? t('settings.mediaFallbackSummary', {
+      count: latestMediaFallback.count,
+    })
+    : t('settings.mediaFallbackNone')
+  const latestMediaFallbackRawError = latestMediaFallback?.rawError?.trim() ?? latestMediaFallback?.reason?.trim() ?? ''
+  const mediaMissingKindLabel = latestMediaMissing?.kind === 'attachment'
+    ? t('settings.mediaMissingKindAttachment')
+    : t('settings.mediaMissingKindImage')
+  const mediaMissingDetectionLabel = latestMediaMissing?.detection === 'runtime'
+    ? t('settings.mediaMissingDetectionRuntime')
+    : t('settings.mediaMissingDetectionRehydrate')
+  const latestMediaMissingSummary = latestMediaMissing
+    ? t('settings.mediaMissingSummary', {
+      detection: mediaMissingDetectionLabel,
+      kind: mediaMissingKindLabel,
+      relativePath: latestMediaMissing.relativePath,
+    })
+    : t('settings.mediaMissingNone')
+  const latestMediaMissingRelativePath = latestMediaMissing?.relativePath?.trim() ?? ''
 
-  const handleCopyValue = async (value) => {
+  const handleCopyValue = async (value, feedbackKey = '') => {
     if (!value || typeof navigator === 'undefined' || !navigator.clipboard?.writeText) return
 
     try {
       await navigator.clipboard.writeText(value)
+      if (feedbackKey) {
+        setCopiedDiagnosticKey(feedbackKey)
+        window.clearTimeout(copiedDiagnosticTimeoutRef.current)
+        copiedDiagnosticTimeoutRef.current = window.setTimeout(() => {
+          setCopiedDiagnosticKey('')
+        }, 1000)
+      }
     } catch (error) {
       console.warn('Failed to copy runtime diagnostic value.', error)
+    }
+  }
+
+  const handleOpenRuntimeLocation = async (target) => {
+    if (!isTauriRuntime || !target) return
+
+    try {
+      setOpeningDiagnosticKey(target)
+      await openRuntimeDiagnosticLocation(target)
+    } catch (error) {
+      console.warn('Failed to open runtime diagnostic location.', target, error)
+    } finally {
+      setOpeningDiagnosticKey('')
     }
   }
 
@@ -221,7 +334,7 @@ export function SidebarLayout() {
               </div>
             </div>
 
-            <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4 custom-scrollbar">
+            <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4 zen-scrollbar">
               <div>
                 <div className="mb-3 text-[11px] uppercase tracking-[0.24em] text-zinc-400">{t('nav.navigation')}</div>
                 <nav className="space-y-1.5">
@@ -329,6 +442,7 @@ export function SidebarLayout() {
 
               <RecentAiTasksPanel
                 tasks={recentAiTasks}
+                onClear={clearAiTasks}
                 onOpenBlock={(blockId) => navigate(`/write?id=${blockId}`)}
               />
             </div>
@@ -381,7 +495,7 @@ export function SidebarLayout() {
               </div>
             ) : null}
 
-            <div className="relative flex-1 overflow-y-auto p-6 md:p-8">
+            <div className="relative flex-1 overflow-y-auto p-6 md:p-8 zen-scrollbar">
               <Outlet context={{ setSidebarOutliner }} />
             </div>
           </main>
@@ -423,7 +537,7 @@ export function SidebarLayout() {
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-6">
+              <div className="flex-1 overflow-y-auto p-6 zen-scrollbar">
                 <div className="space-y-4">
                   <label className="block">
                     <span className="mb-1.5 block text-xs font-medium uppercase tracking-[0.18em] text-zinc-400">{t('settings.baseUrl')}</span>
@@ -486,6 +600,16 @@ export function SidebarLayout() {
                       >
                         {t('settings.copyButton')}
                       </button>
+                      {runtimeDiagnostics.runtime === 'desktop' ? (
+                        <button
+                          type="button"
+                          onClick={() => void handleOpenRuntimeLocation('persistence')}
+                          disabled={openingDiagnosticKey === 'persistence'}
+                          className="shrink-0 rounded-lg border border-zinc-200 px-3 py-2 text-xs text-zinc-500 transition hover:bg-zinc-50 hover:text-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {t('settings.openPathButton')}
+                        </button>
+                      ) : null}
                     </div>
                   </div>
 
@@ -507,7 +631,212 @@ export function SidebarLayout() {
                       >
                         {t('settings.copyButton')}
                       </button>
+                      {runtimeDiagnostics.runtime === 'desktop' ? (
+                        <button
+                          type="button"
+                          onClick={() => void handleOpenRuntimeLocation('media')}
+                          disabled={openingDiagnosticKey === 'media'}
+                          className="shrink-0 rounded-lg border border-zinc-200 px-3 py-2 text-xs text-zinc-500 transition hover:bg-zinc-50 hover:text-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {t('settings.openPathButton')}
+                        </button>
+                      ) : null}
                     </div>
+                  </div>
+
+                  <div className="mt-4 rounded-xl border border-amber-200/70 bg-amber-50/70 px-3 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="text-[11px] font-medium text-amber-800">
+                        {t('settings.persistenceRecoveryLabel')}
+                      </div>
+                      {latestPersistenceRecovery ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (clearPersistenceRecoveryDiagnostic()) {
+                              setRuntimeDiagnostics((current) => ({
+                                ...current,
+                                persistence: {
+                                  ...current.persistence,
+                                  lastRecovery: null,
+                                },
+                              }))
+                            }
+                          }}
+                          className="text-[10px] text-zinc-400 transition-colors cursor-pointer hover:text-zinc-600"
+                        >
+                          {t('settings.clearRecordButton')}
+                        </button>
+                      ) : null}
+                    </div>
+                    <div className="mt-1 text-xs text-amber-700">
+                      {latestPersistenceRecoverySummary}
+                    </div>
+                    <div className="mt-2 text-[11px] text-amber-700/90">
+                      {t('settings.persistenceRecoveryLastSeen')}: {latestPersistenceRecoveryTime}
+                    </div>
+                    {latestPersistenceRecoveryBackupKey ? (
+                      <div className="mt-3">
+                        <div className="mb-1.5 text-[10px] uppercase tracking-[0.18em] text-amber-700/75">
+                          {t('settings.persistenceRecoveryBackupKeyLabel')}
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <div className="min-w-0 flex-1 rounded-lg bg-white/70 px-2.5 py-2 font-mono text-[11px] leading-5 text-amber-900/90 break-all">
+                            {latestPersistenceRecoveryBackupKey}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void handleCopyValue(latestPersistenceRecoveryBackupKey, 'persistence-recovery-backup-key')}
+                            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-zinc-200 bg-white/85 px-3 py-2 text-xs text-zinc-500 transition hover:bg-zinc-50 hover:text-zinc-700"
+                          >
+                            {copiedDiagnosticKey === 'persistence-recovery-backup-key' ? (
+                              <Check className="h-3.5 w-3.5" />
+                            ) : (
+                              <Copy className="h-3.5 w-3.5" />
+                            )}
+                            <span>{t('settings.copyButton')}</span>
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                    {latestPersistenceRecoveryRawError ? (
+                      <div className="mt-3">
+                        <div className="mb-1.5 text-[10px] uppercase tracking-[0.18em] text-amber-700/75">
+                          {t('settings.persistenceRecoveryRawErrorLabel')}
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <div className="min-w-0 flex-1 rounded-lg bg-white/70 px-2.5 py-2 font-mono text-[11px] leading-5 text-amber-900/90">
+                            {latestPersistenceRecoveryRawError}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void handleCopyValue(latestPersistenceRecoveryRawError, 'persistence-recovery-raw-error')}
+                            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-zinc-200 bg-white/85 px-3 py-2 text-xs text-zinc-500 transition hover:bg-zinc-50 hover:text-zinc-700"
+                          >
+                            {copiedDiagnosticKey === 'persistence-recovery-raw-error' ? (
+                              <Check className="h-3.5 w-3.5" />
+                            ) : (
+                              <Copy className="h-3.5 w-3.5" />
+                            )}
+                            <span>{t('settings.copyButton')}</span>
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-4 rounded-xl border border-amber-200/70 bg-amber-50/70 px-3 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="text-[11px] font-medium text-amber-800">
+                        {t('settings.mediaFallbackLabel')}
+                      </div>
+                      {latestMediaFallback ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (clearFallbackDiagnostic()) {
+                              setRuntimeDiagnostics((current) => ({
+                                ...current,
+                                media: {
+                                  ...current.media,
+                                  lastFallback: null,
+                                },
+                              }))
+                            }
+                          }}
+                          className="text-[10px] text-zinc-400 transition-colors cursor-pointer hover:text-zinc-600"
+                        >
+                          {t('settings.clearRecordButton')}
+                        </button>
+                      ) : null}
+                    </div>
+                    <div className="mt-1 text-xs text-amber-700">
+                      {latestMediaFallbackSummary}
+                    </div>
+                    <div className="mt-2 text-[11px] text-amber-700/90">
+                      {t('settings.mediaFallbackLastSeen')}: {latestMediaFallbackTime}
+                    </div>
+                    {latestMediaFallbackRawError ? (
+                      <div className="mt-3">
+                        <div className="mb-1.5 text-[10px] uppercase tracking-[0.18em] text-amber-700/75">
+                          {t('settings.mediaFallbackRawErrorLabel')}
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <div className="min-w-0 flex-1 rounded-lg bg-white/70 px-2.5 py-2 font-mono text-[11px] leading-5 text-amber-900/90">
+                            {latestMediaFallbackRawError}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void handleCopyValue(latestMediaFallbackRawError, 'media-fallback-raw-error')}
+                            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-zinc-200 bg-white/85 px-3 py-2 text-xs text-zinc-500 transition hover:bg-zinc-50 hover:text-zinc-700"
+                          >
+                            {copiedDiagnosticKey === 'media-fallback-raw-error' ? (
+                              <Check className="h-3.5 w-3.5" />
+                            ) : (
+                              <Copy className="h-3.5 w-3.5" />
+                            )}
+                            <span>{t('settings.copyButton')}</span>
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-4 rounded-xl border border-amber-200/70 bg-amber-50/70 px-3 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="text-[11px] font-medium text-amber-800">
+                        {t('settings.mediaMissingLabel')}
+                      </div>
+                      {latestMediaMissing ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (clearMediaMissingDiagnostic()) {
+                              setRuntimeDiagnostics((current) => ({
+                                ...current,
+                                media: {
+                                  ...current.media,
+                                  lastMissing: null,
+                                },
+                              }))
+                            }
+                          }}
+                          className="text-[10px] text-zinc-400 transition-colors cursor-pointer hover:text-zinc-600"
+                        >
+                          {t('settings.clearRecordButton')}
+                        </button>
+                      ) : null}
+                    </div>
+                    <div className="mt-1 text-xs text-amber-700">
+                      {latestMediaMissingSummary}
+                    </div>
+                    <div className="mt-2 text-[11px] text-amber-700/90">
+                      {t('settings.mediaMissingLastSeen')}: {latestMediaMissingTime}
+                    </div>
+                    {latestMediaMissingRelativePath ? (
+                      <div className="mt-3">
+                        <div className="mb-1.5 text-[10px] uppercase tracking-[0.18em] text-amber-700/75">
+                          {t('settings.mediaMissingRelativePathLabel')}
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <div className="min-w-0 flex-1 rounded-lg bg-white/70 px-2.5 py-2 font-mono text-[11px] leading-5 text-amber-900/90 break-all">
+                            {latestMediaMissingRelativePath}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void handleCopyValue(latestMediaMissingRelativePath, 'media-missing-relative-path')}
+                            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-zinc-200 bg-white/85 px-3 py-2 text-xs text-zinc-500 transition hover:bg-zinc-50 hover:text-zinc-700"
+                          >
+                            {copiedDiagnosticKey === 'media-missing-relative-path' ? (
+                              <Check className="h-3.5 w-3.5" />
+                            ) : (
+                              <Copy className="h-3.5 w-3.5" />
+                            )}
+                            <span>{t('settings.copyButton')}</span>
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </div>

@@ -127,7 +127,7 @@ export function CommandDeck({ isOpen, onOpenChange }) {
                   />
                 </div>
 
-                <Command.List className="max-h-[56vh] overflow-y-auto px-3 py-3">
+                <Command.List className="max-h-[56vh] overflow-y-auto px-3 py-3 zen-scrollbar">
                   <Command.Group className="mb-4">
                     <div className="px-3 pb-2 text-[11px] uppercase tracking-[0.22em] text-zinc-400">
                       {t('command.actions')}

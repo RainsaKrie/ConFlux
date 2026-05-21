@@ -1,10 +1,18 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Blocks, CircleDot, Hash, LayoutGrid, Link, List, LoaderCircle, Orbit, Sparkles } from 'lucide-react'
+import { Blocks, CircleDot, Hash, LayoutGrid, Link, List, LoaderCircle, Orbit, Sparkles, Trash2 } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { KnowledgeCard } from '../components/feed/KnowledgeCard'
 import { OmniFilterBar } from '../components/feed/OmniFilterBar'
-import { cleanupUnusedNativeMedia } from '../features/media/localMediaService'
+import {
+  formatAutoTagErrorMessage,
+  QUICK_CAPTURE_ENRICHMENT_KIND,
+  shouldAutoEnrichQuickCapture,
+} from '../features/feed/quickCaptureEnrichment'
+import {
+  cleanupUnusedNativeMedia,
+  collectActiveMediaReferenceHtmlList,
+} from '../features/media/localMediaService'
 import {
   buildPoolContext,
   buildPoolContextKey,
@@ -13,8 +21,8 @@ import {
   tokensToPoolFilters,
 } from '../features/pools/utils'
 import { useFluxStore } from '../store/useFluxStore'
-import { isAiConfigReady, readAiConfig } from '../utils/aiConfig'
-import { classifyQuickCapture } from '../utils/ai'
+import { isAiConfigReady, readAiConfig, subscribeAiConfig } from '../utils/aiConfig'
+import { classifyQuickCaptureStrict } from '../utils/ai'
 import { displayDimensionValue, matchesDimensionValue } from '../utils/displayTag'
 import {
   BLOCK_DIMENSION_DEFAULTS,
@@ -103,6 +111,48 @@ function mergeWithFallback(baseValues = [], nextValues = [], fallbackValue = '')
   return mergeValues(baseValues.filter((value) => value !== fallbackValue), nextValues)
 }
 
+function buildFallbackTitleCandidate(text = '') {
+  const firstLine = text.trim().split('\n')[0]?.trim() ?? ''
+  if (!firstLine) return ''
+  return firstLine.length > 15 ? `${firstLine.slice(0, 15)}...` : firstLine
+}
+
+function shouldReplaceWithAiTitle(currentTitle, content, aiTitle) {
+  const normalizedCurrentTitle = currentTitle?.trim() ?? ''
+  const normalizedAiTitle = aiTitle?.trim() ?? ''
+  if (!normalizedAiTitle) return false
+  if (!normalizedCurrentTitle) return true
+
+  const plainContent = contentToPlainText(content)
+  const fallbackFromPlainContent = buildFallbackTitleCandidate(plainContent)
+
+  if (normalizedCurrentTitle === fallbackFromPlainContent) return true
+  if (plainContent.startsWith(normalizedCurrentTitle)) return true
+
+  return false
+}
+
+function extractLeadingAsciiConcept(content = '') {
+  const plainContent = contentToPlainText(content)
+  const firstLine = plainContent.split('\n')[0]?.trim() ?? ''
+  const matched = firstLine.match(/^[A-Za-z][A-Za-z0-9+.#_-]{1,30}\b/)
+
+  return matched?.[0] ?? ''
+}
+
+function refineAiTitle(currentTitle, content, aiTitle) {
+  const normalizedAiTitle = aiTitle?.trim() ?? ''
+  const leadingConcept = extractLeadingAsciiConcept(content)
+
+  if (!leadingConcept) return normalizedAiTitle
+  if (normalizedAiTitle.toLowerCase().includes(leadingConcept.toLowerCase())) return normalizedAiTitle
+
+  const normalizedCurrentTitle = currentTitle?.trim() ?? ''
+  if (normalizedCurrentTitle.toLowerCase() === leadingConcept.toLowerCase()) return normalizedCurrentTitle
+
+  return leadingConcept
+}
+
 async function processInBatches(items, batchSize, handler) {
   for (let index = 0; index < items.length; index += batchSize) {
     const batch = items.slice(index, index + batchSize)
@@ -125,6 +175,7 @@ export function FeedPage() {
   const { language, t } = useTranslation()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
+  const [aiConfig, setAiConfig] = useState(() => readAiConfig())
   const [query, setQuery] = useState('')
   const [capture, setCapture] = useState('')
   const [viewMode, setViewMode] = useState(() => {
@@ -137,6 +188,10 @@ export function FeedPage() {
   const [captureWarning, setCaptureWarning] = useState('')
   const warningTimeoutRef = useRef(null)
   const captureRef = useRef(null)
+  const activeEnrichmentIdsRef = useRef(new Set())
+  const isMountedRef = useRef(true)
+  const previousAiConfigSignatureRef = useRef('')
+  const sessionRetriedFailedEnrichmentIdsRef = useRef(new Set())
   const [activeTokens, setActiveTokens] = useState(() =>
     parseFiltersParam(searchParams.get('filters')),
   )
@@ -150,21 +205,163 @@ export function FeedPage() {
   const recentPoolEvents = useFluxStore((state) => state.recentPoolEvents)
   const setActivePoolContext = useFluxStore((state) => state.setActivePoolContext)
   const updateBlock = useFluxStore((state) => state.updateBlock)
+  const startAiTask = useFluxStore((state) => state.startAiTask)
+  const updateAiTask = useFluxStore((state) => state.updateAiTask)
 
   useEffect(() => {
     setActiveTokens(parseFiltersParam(searchParams.get('filters')))
   }, [searchParams])
+
+  useEffect(() => subscribeAiConfig(setAiConfig), [])
 
   useEffect(() => {
     window.localStorage.setItem(FEED_VIEW_STORAGE_KEY, viewMode)
   }, [viewMode])
 
   useEffect(
-    () => () => {
-      window.clearTimeout(warningTimeoutRef.current)
+    () => {
+      isMountedRef.current = true
+
+      return () => {
+        isMountedRef.current = false
+        window.clearTimeout(warningTimeoutRef.current)
+      }
     },
     [],
   )
+
+  const aiConfigSignature = useMemo(
+    () => JSON.stringify({
+      apiKey: aiConfig?.apiKey?.trim() ?? '',
+      baseURL: aiConfig?.baseURL?.trim() ?? '',
+      model: aiConfig?.model?.trim() ?? '',
+    }),
+    [aiConfig],
+  )
+
+  useEffect(() => {
+    const previousSignature = previousAiConfigSignatureRef.current
+    previousAiConfigSignatureRef.current = aiConfigSignature
+
+    if (!isAiConfigReady(aiConfig)) return
+    if (!previousSignature || previousSignature === aiConfigSignature) return
+
+    fluxBlocks.forEach((block) => {
+      if (block?.aiEnrichment?.kind !== QUICK_CAPTURE_ENRICHMENT_KIND) return
+      if (block?.aiEnrichment?.status !== 'failed') return
+
+      updateBlock(block.id, (old) => ({
+        aiEnrichment: {
+          ...old.aiEnrichment,
+          lastError: '',
+          status: 'pending',
+        },
+      }))
+    })
+
+    sessionRetriedFailedEnrichmentIdsRef.current.clear()
+  }, [aiConfig, aiConfigSignature, fluxBlocks, updateBlock])
+
+  useEffect(() => {
+    if (!isAiConfigReady(aiConfig)) return
+
+    fluxBlocks.forEach((block) => {
+      if (block?.aiEnrichment?.kind !== QUICK_CAPTURE_ENRICHMENT_KIND) return
+      if (block?.aiEnrichment?.status !== 'failed') return
+      if (sessionRetriedFailedEnrichmentIdsRef.current.has(block.id)) return
+
+      sessionRetriedFailedEnrichmentIdsRef.current.add(block.id)
+      updateBlock(block.id, (old) => ({
+        aiEnrichment: {
+          ...old.aiEnrichment,
+          lastError: '',
+          status: 'pending',
+        },
+      }))
+    })
+  }, [aiConfig, fluxBlocks, updateBlock])
+
+  useEffect(() => {
+    if (!isAiConfigReady(aiConfig)) return
+
+    const pendingBlocks = fluxBlocks.filter(shouldAutoEnrichQuickCapture)
+    if (!pendingBlocks.length) return
+
+    void processInBatches(pendingBlocks, 2, async (block) => {
+      if (!isMountedRef.current || activeEnrichmentIdsRef.current.has(block.id)) return
+
+      activeEnrichmentIdsRef.current.add(block.id)
+      const taskId = startAiTask({
+        blockId: block.id,
+        message: t('feed.autoTagTaskRunning'),
+        type: QUICK_CAPTURE_ENRICHMENT_KIND,
+      })
+
+      updateBlock(block.id, (old) => ({
+        aiEnrichment: {
+          ...old.aiEnrichment,
+          lastAttemptAt: new Date().toISOString(),
+          status: 'processing',
+        },
+      }))
+
+      try {
+        const aiTags = await classifyQuickCaptureStrict(contentToPlainText(block.content ?? ''), aiConfig, language)
+
+        if (!isMountedRef.current) return
+
+        updateBlock(block.id, (old) => ({
+          aiEnrichment: {
+            ...old.aiEnrichment,
+            completedAt: new Date().toISOString(),
+            lastError: '',
+            status: 'completed',
+          },
+          title: shouldReplaceWithAiTitle(old.title, old.content, aiTags.title)
+            ? refineAiTitle(old.title, old.content, aiTags.title)
+            : old.title,
+          dimensions: {
+            ...old.dimensions,
+            domain: aiTags.domain?.length
+              ? mergeWithFallback(old.dimensions.domain, aiTags.domain, BLOCK_DIMENSION_DEFAULTS.domain)
+              : old.dimensions.domain,
+            format: aiTags.format?.length
+              ? mergeWithFallback(old.dimensions.format, aiTags.format, BLOCK_DIMENSION_DEFAULTS.format)
+              : old.dimensions.format,
+            project: mergeValues(old.dimensions.project, aiTags.project || []),
+            source: mergeValues(old.dimensions.source, [BLOCK_SOURCE_LABELS.aiGenerated]),
+          },
+          updatedAt: getTodayStamp(),
+        }))
+        updateAiTask(taskId, {
+          message: t('feed.autoTagTaskDone'),
+          status: 'done',
+        })
+      } catch (error) {
+        if (!isMountedRef.current) return
+
+        const message = formatAutoTagErrorMessage(error, {
+          auth: t('feed.autoTagApiAuthHint'),
+          path: t('feed.autoTagApiPathHint'),
+          rateLimit: t('feed.autoTagApiRateLimitHint'),
+          timeout: t('feed.autoTagApiTimeoutHint'),
+        })
+        updateBlock(block.id, (old) => ({
+          aiEnrichment: {
+            ...old.aiEnrichment,
+            lastError: message,
+            status: 'failed',
+          },
+        }))
+        updateAiTask(taskId, {
+          message: t('feed.autoTagTaskFailed', { message }),
+          status: 'failed',
+        })
+      } finally {
+        activeEnrichmentIdsRef.current.delete(block.id)
+      }
+    })
+  }, [aiConfig, fluxBlocks, language, startAiTask, t, updateAiTask, updateBlock])
 
   const tagSuggestions = useMemo(() => collectTagSuggestions(fluxBlocks, language), [fluxBlocks, language])
 
@@ -255,7 +452,6 @@ export function FeedPage() {
     try {
       const baseDimensions = buildCaptureDimensions(activeFilters)
       const timestamp = getTodayStamp()
-      const aiConfig = readAiConfig()
 
       if (content.length > LONGFORM_CAPTURE_THRESHOLD) {
         const chunks = splitIntoSemanticChunks(content)
@@ -291,11 +487,15 @@ export function FeedPage() {
       const pendingBlocks = [
         {
           id: blockId,
-          segment: content,
           fallbackBlock: {
             id: blockId,
-            title: firstLine.length > 15 ? `${firstLine.slice(0, 15)}...` : firstLine,
+            title: buildFallbackTitleCandidate(firstLine),
             content,
+            aiEnrichment: {
+              kind: QUICK_CAPTURE_ENRICHMENT_KIND,
+              queuedAt: new Date().toISOString(),
+              status: 'pending',
+            },
             dimensions: baseDimensions,
             createdAt: timestamp,
             updatedAt: timestamp,
@@ -311,24 +511,6 @@ export function FeedPage() {
         showCaptureWarning(t('feed.offlineSaved'))
       } else {
         setCaptureWarning('')
-        void processInBatches(pendingBlocks, 2, async ({ id, segment }) => {
-          const aiTags = await classifyQuickCapture(segment, aiConfig, language)
-
-          updateBlock(id, (old) => ({
-            title: aiTags.title && aiTags.title.length > 0 ? aiTags.title : old.title,
-            dimensions: {
-              ...old.dimensions,
-              domain: aiTags.domain?.length
-                ? mergeWithFallback(baseDimensions.domain, aiTags.domain, BLOCK_DIMENSION_DEFAULTS.domain)
-                : old.dimensions.domain,
-              format: aiTags.format?.length
-                ? mergeWithFallback(baseDimensions.format, aiTags.format, BLOCK_DIMENSION_DEFAULTS.format)
-                : old.dimensions.format,
-              project: mergeValues(baseDimensions.project, aiTags.project || []),
-              source: mergeValues(old.dimensions.source, [BLOCK_SOURCE_LABELS.aiGenerated]),
-            },
-          }))
-        })
       }
     } finally {
       setIsSubmitting(false)
@@ -350,12 +532,13 @@ export function FeedPage() {
     )
     if (!shouldDelete) return
 
-    const remainingHtmlList = fluxBlocks
-      .filter((item) => item.id !== block.id)
-      .map((item) => item.content ?? '')
+    const remainingHtmlList = collectActiveMediaReferenceHtmlList(
+      fluxBlocks.filter((item) => item.id !== block.id),
+    )
+    const removedHtml = collectActiveMediaReferenceHtmlList([block]).join('')
 
     deleteBlock(block.id)
-    await cleanupUnusedNativeMedia(block.content ?? '', remainingHtmlList)
+    await cleanupUnusedNativeMedia(removedHtml, remainingHtmlList)
   }
 
   const activeLabel = useMemo(() => {
@@ -668,6 +851,17 @@ export function FeedPage() {
                       <span className="text-[11px] text-zinc-400 font-mono tracking-tight w-16 text-right shrink-0 group-hover:text-zinc-600 transition-colors">
                         {formatListDate(block.updatedAt, language)}
                       </span>
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          void handleDeleteBlock(block)
+                        }}
+                        className="ml-1 flex-shrink-0 rounded-md p-1 text-zinc-300 opacity-0 transition hover:bg-rose-50 hover:text-rose-500 group-hover:opacity-100"
+                        aria-label={t('feed.deleteConfirm', { title: block.title })}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
                     </div>
                   </MotionDiv>
                 )

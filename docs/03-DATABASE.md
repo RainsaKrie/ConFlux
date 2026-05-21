@@ -1,12 +1,12 @@
 ﻿# Conflux 数据与存储设计
 
-文档基线：`v1.0 稳定化阶段 / Roadmap Solidified`
+文档基线：`v2.0 Native Persistence & Media / Hybrid Store Baseline`
 
 ## 1. 文档定位
 
 本文件记录的是 Conflux 当前真实存储结构，以及已经被版本路线图锁定的存储演进方向。
 
-当前最准确的描述仍然是：`v1.0 稳定化阶段的数据基线`。
+当前最准确的描述应更新为：`v2.0 Native Persistence & Media` 阶段的混合持久化数据基线。
 
 版本事实以 [`04-CHANGELOG.md`](./04-CHANGELOG.md) 为准。
 
@@ -72,6 +72,7 @@ Conflux 当前使用的是一套混合持久化模型：
 说明：
 
 - `Phantom Weaving` 第一阶推荐与长文切块都已完全本地化，不依赖此配置。
+- `baseURL` 既可以填写 provider base URL，也可以直接填写完整的 `/chat/completions` endpoint；当前前端会避免重复拼接。
 
 ### `flux_feed_view_mode`
 
@@ -79,6 +80,14 @@ Conflux 当前使用的是一套混合持久化模型：
 
 - `grid`
 - `list`
+
+### 运行时诊断键
+
+当前设置面板会读取以下本地诊断键，用于暴露最近一次恢复或媒体异常，而不是只依赖控制台：
+
+- `conflux_persistence_recovery_diagnostic`：最近一次持久化坏载荷恢复记录
+- `conflux_media_missing_diagnostic`：最近一次图片/附件缺失诊断
+- `conflux_media_fallback_diagnostic`：最近一次媒体回退为降级路径的诊断
 
 ## 3. 当前实体模型
 
@@ -224,6 +233,8 @@ Conflux 当前不会把 block 关系固化成单独表，而是按需推导：
 
 - 把桌面端持久化主轴切到 `Tauri Store`
 - 保持 Web 环境自动回退到 `localStorage`
+- 通过原生文件系统把图片与附件写入 `$APPDATA/media`
+- 让正文只保存可恢复的本地媒体引用与必要元信息，而不是把 Base64 重新作为桌面主路径
 - 为未来数据库化迁移保留兼容空间
 - 让 revision、threads、presets 不再被局限在浏览器存储容量与形态里
 
@@ -232,27 +243,25 @@ Conflux 当前不会把 block 关系固化成单独表，而是按需推导：
 - Zustand persist 已切到异步 `Tauri Store` 适配
 - 首启会从 legacy `localStorage` 自动迁移到 `conflux_universe.json`
 - 当前读写协议已经对齐 `createJSONStorage` 的字符串协议
+- 当前 `hybridPersistStorage` 会在桌面写入原生 Store 的同时保留 `localStorage` 镜像，并在坏载荷或原生读写失败时安全回退
 - 当前在读取到损坏的桌面 / Web 持久化载荷时，会先备份原始坏数据，再回退到安全默认值，避免损坏状态持续阻塞启动
 - 桌面窗口隐藏或关闭前会主动冲刷一次待写入的 `Tauri Store`，降低延迟写盘带来的最近编辑丢失风险
+- Tauri 2 的 `assetProtocol` 与 `$APPDATA/media` scope 已明确开启，`convertFileSrc()` 生成的本地媒体 URL 可以稳定回读
+- 图片与普通附件都已进入桌面本地媒体主链：支持写入、重启恢复、缺失退化、受限打开与 revision-safe 孤儿回收
+- `verify:native-persistence`、`verify:native-media`、`verify:desktop-media-config`、`verify:quick-capture` 与 `verify:bundle` 已统一纳入 `verify:v2` 聚合验收
 
 ### `v2.1`
 
 负责：
 
-- 将图片与附件从正文内联数据中剥离出来
-- 通过原生文件系统把媒体写入本地 `media/` 目录
-- 让正文只保存资源引用，而不是巨型 Base64 内容
+- 全局快捷键
+- 系统托盘与静默守护
+- 后台宿主与轻量任务脱离主窗口生命周期
 
 当前实现态补充：
 
-- 新写入的图片节点会同时保存本地引用元信息（如 `data-media-relative-path`）
-- Tauri 环境下重开应用时，正文会优先根据这些元信息重建安全本地 URL
-- 若是早期未带完整元信息的桌面图片，也会尽量从既有 `src / fileName` 推断相对路径并接回同一条恢复链路
-- 若对应媒体文件已丢失，则会降级为低干扰占位图，而不是持续暴露浏览器原生坏图标
-- 普通附件现也会以本地引用卡片形式写入正文，并保存 `data-media-relative-path / data-media-origin / data-media-file-name` 等元信息；重开应用后会恢复本地打开入口，若文件缺失则降级为不可用状态
-- 当前删除整篇笔记时，会对该笔记引用的本地媒体执行一轮保守回收：仅当图片/附件未再被其他笔记引用时，才会从桌面 `media/` 目录删除对应文件
-- 当前编辑器在正文保存时，也会对本次被移除的本地媒体执行同样的保守回收：仅当对应文件已不再被任何笔记引用时，才会删除桌面 `media/` 目录中的孤儿文件
-- 当前桌面端在持久化 hydration 完成后，还会对 `media/` 目录执行一次启动级保守扫描，用于清理历史遗留且已经没有任何笔记引用的孤儿文件
+- 当前尚未进入正式实现态。
+- 本地媒体写入、恢复、缺失诊断与孤儿回收已经前置并吸收到 `v2.0`，不再作为 `v2.1` 的独立数据层任务维护。
 
 ## 7. 未来数据库化迁移预案
 

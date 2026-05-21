@@ -364,7 +364,7 @@ export function GraphPage() {
         </div>
       </div>
 
-      <aside className="min-h-0 w-[340px] shrink-0 overflow-y-auto border-l border-zinc-100 bg-white/90 p-5">
+      <aside className="min-h-0 w-[340px] shrink-0 overflow-y-auto zen-scrollbar border-l border-zinc-100 bg-white/90 p-5">
         {activeBlock && relationSnapshot ? (
           <div className="flex min-h-full flex-col gap-4">
             <div className="flex items-center justify-between gap-3">

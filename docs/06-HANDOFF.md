@@ -18,12 +18,13 @@
 - `v0.1 ~ v0.7` 可以视作相对线性的早期里程碑。
 - `v0.8`、`v0.9`、`v1.0` 不是三次严格切开的独立发布，而是对当前主链能力的回顾性命名。
 - 当前代码基线已经同时包含 `v0.9` 的段落级本地推荐主链、`v1.0` 的长文切块主链，以及已经收尾完成的 `v1.1` 混合召回主链。
-- 因此当前最准确的说法现在更新为：`v1.1 已结案，下一阶段待决`。
+- 因此当前最准确的说法应更新为：`v1.1 / v1.2 已结案，默认主战役进入 v2.0 Native Persistence & Media`。
 
 额外注意：
 
 - `package.json` 的 `1.0.0` 现在表示开源发布包版本元数据。
 - 产品版本真相只以 [`04-CHANGELOG.md`](./04-CHANGELOG.md) 为准。
+- 当前自动验收基线已可跑通一次 `npm run verify:v2`；剩余待收口事项主要集中在桌面实机清单，而不是纯脚本回归。
 
 ## 3. 当前代码里已经成立的事实
 
@@ -128,49 +129,76 @@
 - 非 Tauri 环境下自动回退至 `localStorage`，保持 Web 调试不中断
 - 当前桌面端已验证真实文件落盘：`C:\Users\ROG\AppData\Roaming\com.conflux.desktop\conflux_universe.json` 已存在且包含 `flux_blocks_store`
 - 当前已补上损坏存储的安全回退与坏数据备份；窗口隐藏/关闭前也会主动冲刷待写入的 `Tauri Store`
+- 当前设置弹层已补上“最近一次存储恢复”诊断：若 `localStorage / Tauri Store` 载荷损坏并触发备份 + 回退，界面会直接显示来源、回退目标、备份 key 与原始错误，便于执行 `v2.0` 的异常载荷验收，而不再只能依赖控制台
+- 当前设置弹层中的数据库文件与本地 `media/` 目录现在都支持桌面下一键打开：做迁移、恢复、附件与孤儿媒体验收时，不需要再手动去系统路径里定位
+- 当前已补齐 Tauri 2 本地媒体回读所需的 `assetProtocol` 配置：`tauri.conf.json` 现已显式开启 `app.security.assetProtocol`，并把 scope 收束到 `$APPDATA/media`；若后续再出现“图片节点已插入但立即退化成占位图”的现象，优先先检查这条协议配置是否被回退
+- 当前已将桌面持久化桥接逻辑抽离为独立 `hybridPersistStorage` 模块；`verify:native-persistence` 现在会直接回归 Web 读取、legacy -> Tauri 迁移、损坏原生载荷回退、原生写入镜像同步与删除失败 fallback，不再只停留在 helper 级断言
+- 当前已将原生媒体启动扫描中的孤儿候选计算抽离为独立 helper；`verify:native-media` 现在会额外覆盖目录扫描识别与 orphan cleanup 候选计算，不再只验证 HTML 中的媒体引用提取
+- 当前 TipTap 图片粘贴/拖拽已由编辑器事件层主动接管：Tauri 下优先写入 `$APPDATA/media/` 物理文件并用 `convertFileSrc` 生成安全 URL，Web 或写入失败时自动降级为 Base64 插入，确保不会白屏或丢图；该链路已完成一轮桌面实机验证
+- 当前本地附件打开已补上 Tauri command：前端附件卡片会传入 `media/` 相对路径，Rust 侧校验路径必须位于 AppData 的媒体目录内，再交给系统打开物理文件；编辑器 NodeView 与静态渲染态附件都会统一走这条路径；路径安全已由 Rust 单元测试覆盖，但附件点击打开的实机验证本轮已跳过
+- 当前缺失媒体退化规则已抽为 `nativeMediaRecovery` 纯 helper：缺失图片会保留原 alt 并追加不可用提示、切到占位图；缺失附件会移除打开 href、标记不可用并保留结构元数据；`verify:native-media` 已覆盖这些状态描述
+- 当前本地媒体 GC 已升级为 revision-safe：`extractActiveMediaFiles(blocks)` 会同时扫描 `block.content`、`revision.beforeContent` 与 `revision.afterContent`；启动后台 GC、编辑保存清理、Feed 删除清理都已改用这套有效引用集合，避免误删历史版本仍需要的图片/附件
+- 当前 `Quick Capture` 的 fallback 卡片已补上延迟 AI enrich 机制：若创建当下尚未完成 `AI 设置`，卡片会先离线入库并标记待处理；配置补齐后 Feed 会自动补跑标题/标签生成，失败项会在下一次配置变更后自动重试
+- 当前已修正速记 AI 补标的状态恢复边界：卡片 `pending` 状态会明确表现为“等待 AI 补标”，真正请求中才进入 `processing`；若页面刷新、切换或慢接口导致旧请求失联，下次回到 Feed 仍会重新捞起这些 `processing` 卡片，避免它们永久停在“AI 正在补标”
+- 当前已将速记补标状态判断抽离为独立 helper，并新增 `npm run verify:quick-capture`：会自动回归 legacy 速记识别、`pending / processing / completed` 状态判定，以及常见 `404 / 401 / 429 / timeout` 错误映射；这条检查现已接入 `verify:v2`
+- 当前已新增 `npm run verify:desktop-media-config`：会自动检查 `src-tauri/capabilities/default.json` 中的 `fs` 权限与 `$APPDATA/media` scope，以及 `tauri.conf.json` 中 `assetProtocol` 的开启状态和读取范围；这条检查现已接入 `verify:v2`，用于防止桌面媒体“能写不能读”的配置回退再次潜入主链
+- 当前已清理缺失媒体标签中的历史字符污染：图片 alt 与缺失提示之间统一使用 ASCII ` - ` 分隔，`verify:native-media` 已覆盖这条边界；如果后续再看到奇怪的中点/乱码分隔符，优先检查 `nativeMediaRecovery` 是否被回退
+- 当前已修正整篇笔记删除时的媒体清理遗漏：Feed 删除卡片时会把该笔记当前正文和 `revision.beforeContent / afterContent` 里的媒体引用一起送进 removed set，不再只盯 `block.content`；`verify:native-media` 已覆盖“整篇删除也要清理 revision-only 独占媒体”的场景
+- 当前已进一步补强共享媒体的 revision-safe 回归：`verify:native-media` 现在还会覆盖“另一条笔记的 revision 仍在引用时不得误删”和“启动级 orphan scan 遇到 revision-only 引用必须保留”两类场景；后续如果 GC 再出问题，先看这两条断言是否被新改动打破
+- 当前已补上“最近一次本地媒体缺失”诊断：图片/附件若在重启重载或运行时被发现已不在桌面 `media/` 目录中，设置面板会直接显示媒体类型、发现时机和 `media/...` 相对路径；`verify:native-media` 也已覆盖这条诊断结构的读写协议
+- 当前 AI Base URL 已兼容两种填写方式：provider base URL 与完整 `/chat/completions` endpoint 都可用，避免重复拼接 endpoint 后触发 `HTTP 404`
+- 当前速记 AI 补标失败会在 Feed 卡片和最近任务面板中直接暴露，`HTTP 404 / 401 / 403 / 429` 会被翻译成更可操作的 API 设置提示
+- 当前 AI 标题生成已补上“核心英文术语保护”：Prompt 会要求保留英文术语/专有名词，Feed / Write 的标题替换逻辑也会阻止首行英文概念被泛化标题覆盖
+- 当前 Feed 网格卡片主标题已改为单行省略，避免长标题被硬切断后误导用户
+- 当前 Feed 列表视图已补齐悬浮删除按钮，点击时会阻止行点击冒泡，并复用既有删除确认与媒体孤儿清理链路
+- 当前最近 AI 任务已收紧：store 最多保留 5 条，侧边栏最多展示 3 条，并支持一键清空
+- 当前主要滚动容器已统一接入 `zen-scrollbar`，用于在 Windows/Tauri 下隐藏粗重系统滚动条；样式已放在全局 fallback 之后，并升级为隐藏原生滚动条、hover 时自绘极淡侧边细线，避免 WebView 原生 gutter 继续露出粗灰条
+- 当前生产构建 chunk 已完成一轮收口：`/write` 的 TipTap 编辑器被拆成二级 lazy `EditorSurface`，Vite 在 Rollup / Rolldown 两条配置路径都设置了 `manualChunks`，将 editor、Transformers、ONNX runtime 拆成独立 vendor chunk；`EditorPage` 与 `embedder` 入口不再超过 500KB，`verify:v2` 的 native config loader 构建中大 chunk warning 已消失；第三方 `onnxruntime-web` direct eval 噪音已在构建检查中抑制，一方代码仍由 ESLint `no-eval` 阻断
+- 当前已新增 `verify:bundle` 并接入 `verify:v2`：构建后会自动检查最大 JS chunk、`EditorPage`、`EditorSurface`、`embedder`、editor vendor、Transformers vendor 与 ONNX runtime vendor 的尺寸预算，后续如果分包回退会直接让 `verify:v2` 失败
 - 当前设置弹层已补上运行边界诊断卡：会明确显示当前是桌面 `Tauri` 还是纯 Web，会话持久化走 `conflux_universe.json` 还是 `localStorage`，媒体走 `$APPDATA/media/` 还是 `Data URL`，便于 `v2.0` 实机验收时快速确认真实主链
 
 下一步默认任务：
 
 - 补齐 `v2.0` 的结案清单，而不是提前跳去 `v1.3` 或 `v2.1`
 - 优先验证桌面存储主路径的恢复边界、迁移边界与异常文件边界
+- 执行异常载荷验收时，优先利用设置面板中的“最近一次存储恢复”诊断确认恢复是否真的发生，再回看备份 key 与原始错误，减少只能靠控制台日志判断的盲区
+- 执行迁移、附件恢复与孤儿媒体清理验收时，优先使用设置面板里的“打开”按钮直达数据库文件或 `media/` 目录，减少手动找路径造成的额外噪音
 - 把本地图片/附件链路从“已接通”推进到“重启后仍稳定可用”的完整闭环
+- 媒体 GC 的安全原则必须继续保持：宁可漏删，不可误删；所有清理路径都必须把 revisions 纳入有效引用集合
+- 回归 Feed 的低噪音交互：AI 补标失败提示、标题省略、列表悬浮删除、最近任务清空与 `zen-scrollbar` 都应在真实 Tauri 窗口中确认一次
 - 明确 Tauri 桌面主路径与 Web fallback 的文档口径，避免再次混淆 `v2.0-Alpha` 与 `v2.0`
 
 默认实机验收顺序：
 
 1. 先跑 legacy `localStorage -> Tauri Store` 迁移与最近编辑恢复。
 2. 再跑损坏载荷回退，确认坏数据备份与安全默认值生效。
-3. 再跑图片/附件插入、重启恢复、缺失退化。
-4. 再跑删整篇笔记、正文删除媒体、启动后孤儿扫描三类回收。
-5. 最后跑纯 Web fallback，确认 `localStorage + Data URL` 降级链路仍正常。
+3. 再跑附件插入、重启恢复与系统打开入口，确认附件不是只恢复卡片，而是真的能打开本地物理文件；本轮已跳过该实机项，后续仍需补测。
+4. 再跑缺失媒体退化体感：手动删除图片/附件原文件后重启，确认图片显示占位图、附件显示不可用状态；自动脚本只覆盖状态描述，不替代桌面体感。
+5. 再跑删整篇笔记、正文删除媒体、启动后孤儿扫描三类回收。
+6. 再跑 Feed 网格/列表视图交互，确认标题省略、列表删除、AI 补标失败展示与最近任务清空均正常。
+7. 再跑 Windows/Tauri 滚动条体感，确认 `zen-scrollbar` 已彻底移除原生粗灰条，并只在滚动区域悬停时露出极淡侧边细线。
+8. 最后跑纯 Web fallback，确认 `localStorage + Data URL` 降级链路仍正常。
 
 ### `v2.1`
 
 负责：
 
-- `Local Media Engine`
+- `Global Shortcuts`
+- `系统托盘与静默守护`
+- 后台宿主与轻量任务脱离主窗口生命周期
 
 当前进度：
 
-- Tauri 侧已接入 `plugin-fs`，并为 `$APPDATA/media/` 目录补上受限 scope
-- 应用启动时会确保 `C:\Users\ROG\AppData\Roaming\com.conflux.desktop\media\` 存在
-- `FluxEditor` 已接入图片粘贴/拖拽拦截：Tauri 下会把图片写入本地 `media/` 目录并通过安全本地 URL 插入编辑器
-- 新写入的图片节点已开始保存可重建的本地引用元信息；应用重开时会尝试重建安全 URL，若文件缺失则回退到低干扰占位图
-- 旧桌面图片若尚未保存完整元信息，也会尽量从既有 `src / fileName` 推断相对路径并重新接回恢复链路
-- 现在普通附件也会在 Tauri 下落入本地 `media/` 目录，并以轻量附件卡片写入正文；应用重开后会恢复本地打开入口，若文件缺失则降级为不可用状态
-- 从 Feed 删除整篇笔记时，系统会保守清理其独占的本地图片/附件：若对应文件不再被其他笔记引用，则会一并从桌面 `media/` 目录移除
-- 编辑器正文保存后，系统也会保守清理这次被移除且已无其他引用的本地图片/附件，避免长期积累孤儿文件
-- 在桌面持久化 hydration 完成后，应用还会对 `media/` 目录执行一次启动级孤儿扫描，清理历史遗留且已无任何笔记引用的媒体文件
-- Web 环境保持降级策略：若非 Tauri，则回退为 Data URL 插入，保证浏览器版不崩溃
+- 当前尚未进入正式实现态。
+- 本地媒体引擎、附件恢复、缺失退化与孤儿回收已经统一并入 `v2.0 Native Persistence & Media`，不再作为 `v2.1` 的独立推进项。
 
 ## 5. 默认续开发协议
 
 如果下次用户只说“继续”“看 docs 继续”“同步 docs 并推进”，默认按下面流程执行：
 
 1. 先读取 [`06-HANDOFF.md`](./06-HANDOFF.md)、[`04-CHANGELOG.md`](./04-CHANGELOG.md)、[`02-ARCHITECTURE.md`](./02-ARCHITECTURE.md)。
-2. 先确认当前工作应视为“`v1.1` 已结案，下一阶段待决”。
-3. 先确认当前工作应视为“`v1.1` 与 `v1.2` 已结案，默认主战役进入 `v2.0`”。
+2. 先确认当前工作应视为“`v1.1` 与 `v1.2` 已结案，默认主战役进入 `v2.0`”。
+3. 先确认 `npm run verify:v2` 代表的自动验收基线是否仍然成立；若不成立，优先修复回归再谈扩张。
 4. 先确认本轮任务属于 `v1.3`、`v2.0-Alpha`、`v2.0`、`v2.1`、`v2.2` 或 `v2.3` 中的哪一个；若仍想继续深挖推荐链路，也要明确说明这是 `v1.1` 之后的增强，而不是未完成项。
 5. 若任务尚未归属版本，先更新 docs，再开始改代码。
 6. 完成后默认运行与改动相关的校验，并把结果写回文档。
@@ -215,13 +243,19 @@ npm run verify:native-media
 npm run verify:native-persistence
 ```
 
+如果本次涉及分包、懒加载边界、编辑器主 chunk 或语义检索 vendor 体积，再补跑：
+
+```bash
+npm run verify:bundle
+```
+
 如果本次在推进 `v2.0` 的结案准备，优先直接跑：
 
 ```bash
 npm run verify:v2
 ```
 
-它会串行执行 `verify:native-persistence`、`verify:native-media`、`lint` 与 `build`，并提醒剩余必须人工完成的桌面验收项。
+它会串行执行 `verify:native-persistence`、`verify:native-media`、`verify:desktop-media-config`、`verify:quick-capture`、`lint`、`build` 与 `verify:bundle`，并提醒剩余必须人工完成的桌面验收项。
 
 ## 8. 交接结论
 

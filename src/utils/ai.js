@@ -10,6 +10,7 @@ const FALLBACK_CLASSIFICATION = {
   format: ['\u788e\u7247'],
   project: [],
 }
+const QUICK_CAPTURE_TIMEOUT_MS = 45000
 
 function extractJsonObject(text) {
   const fenced = text.match(/```json\s*([\s\S]*?)```/i)
@@ -49,9 +50,14 @@ function ensureAiConfig(config) {
   }
 }
 
-export async function classifyQuickCapture(content, config, language = 'zh') {
+async function requestQuickCaptureClassification(content, config, language = 'zh') {
+  const resolved = ensureAiConfig(config)
+  const abortController = typeof AbortController !== 'undefined' ? new AbortController() : null
+  const timeoutId = abortController
+    ? globalThis.setTimeout(() => abortController.abort(), QUICK_CAPTURE_TIMEOUT_MS)
+    : null
+
   try {
-    const resolved = ensureAiConfig(config)
     const response = await fetch(resolveChatCompletionsUrl(resolved.baseURL), {
       method: 'POST',
       headers: {
@@ -71,6 +77,7 @@ export async function classifyQuickCapture(content, config, language = 'zh') {
           },
         ],
       }),
+      signal: abortController?.signal,
     })
 
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
@@ -78,7 +85,27 @@ export async function classifyQuickCapture(content, config, language = 'zh') {
     const payload = await response.json()
     const rawText = payload?.choices?.[0]?.message?.content ?? ''
     return safeParseClassification(rawText)
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new Error(`Request timed out after ${Math.round(QUICK_CAPTURE_TIMEOUT_MS / 1000)} seconds`)
+    }
+
+    throw error
+  } finally {
+    if (timeoutId) {
+      globalThis.clearTimeout(timeoutId)
+    }
+  }
+}
+
+export async function classifyQuickCapture(content, config, language = 'zh') {
+  try {
+    return await requestQuickCaptureClassification(content, config, language)
   } catch {
     return FALLBACK_CLASSIFICATION
   }
+}
+
+export async function classifyQuickCaptureStrict(content, config, language = 'zh') {
+  return requestQuickCaptureClassification(content, config, language)
 }

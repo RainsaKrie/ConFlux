@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useState } from 'react'
-import { EditorContent, ReactRenderer, useEditor } from '@tiptap/react'
+import { EditorContent, ReactNodeViewRenderer, ReactRenderer, useEditor } from '@tiptap/react'
 import Highlight from '@tiptap/extension-highlight'
 import Image from '@tiptap/extension-image'
 import Mention from '@tiptap/extension-mention'
@@ -27,7 +27,7 @@ import {
 import { useTranslation } from '../../i18n/I18nProvider'
 import {
   attachNativeMediaIntegrityHandlers,
-  getSafeAssetUrl,
+  getAssetUrl,
   hasNativeMediaHint,
   isTauriRuntime,
   rehydrateNativeMediaHtml,
@@ -41,6 +41,7 @@ import { contentToPlainText } from '../../utils/blocks'
 import { AdaptiveLensNode } from './extensions/AdaptiveLensNode'
 import { FoldingExtension } from './extensions/FoldingExtension'
 import { NativeAttachmentNode } from './extensions/NativeAttachmentNode'
+import { NativeImageNodeView } from './extensions/NativeImageNodeView'
 
 function escapeHtml(text) {
   return text
@@ -59,6 +60,8 @@ function normalizeEditorContent(content = '') {
 }
 
 const NativeImage = Image.extend({
+  draggable: true,
+
   addAttributes() {
     return {
       ...this.parent?.(),
@@ -95,6 +98,10 @@ const NativeImage = Image.extend({
             : {},
       },
     }
+  },
+
+  addNodeView() {
+    return ReactNodeViewRenderer(NativeImageNodeView)
   },
 })
 
@@ -138,14 +145,21 @@ function createFileLabel(file, fallbackLabel) {
 }
 
 function extractPasteFiles(event) {
-  const items = Array.from(event.clipboardData?.items ?? [])
-  return items
+  const directFiles = Array.from(event.clipboardData?.files ?? [])
+  const itemFiles = Array.from(event.clipboardData?.items ?? [])
     .map((item) => item.getAsFile())
     .filter(Boolean)
+
+  return Array.from(new Set([...directFiles, ...itemFiles]))
 }
 
 function extractDropFiles(event) {
   return Array.from(event.dataTransfer?.files ?? [])
+}
+
+function shouldHandleExternalFileDrop(view, event, moved) {
+  if (moved || view?.dragging) return false
+  return extractDropFiles(event).length > 0
 }
 
 function partitionFiles(files) {
@@ -187,48 +201,102 @@ function buildImageInsertMetadata(filePath = '') {
 }
 
 async function insertImageFiles(editor, files, insertPosition = null) {
-  if (!editor || files.length === 0) return true
-
-  if (typeof insertPosition === 'number') {
-    editor.chain().focus().setTextSelection(insertPosition).run()
-  } else {
-    editor.chain().focus().run()
-  }
-
-  for (const [index, file] of files.entries()) {
-    try {
-      const storedFilePath = await saveImageFile(file)
-      const safeUrl = await getSafeAssetUrl(storedFilePath)
-      const metadata = buildImageInsertMetadata(storedFilePath)
-
-      editor
-        .chain()
-        .focus()
-        .setImage({
-          src: safeUrl,
-          alt: createFileLabel(file, `image-${index + 1}`),
-          title: createFileLabel(file, `image-${index + 1}`),
-          mediaFileName: metadata.fileName,
-          mediaOrigin: metadata.mediaOrigin,
-          mediaRelativePath: metadata.mediaRelativePath,
-        })
-        .run()
-    } catch (error) {
-      console.warn('Failed to insert image into editor.', error)
+  if (!editor || files.length === 0) {
+    return {
+      didInsertImages: false,
+      failedImageCount: 0,
+      failedImageReason: '',
+      inlineFallbackCount: 0,
+      inlineFallbackReason: '',
     }
   }
 
-  return true
+  let position = typeof insertPosition === 'number' ? insertPosition : null
+  let failedImageCount = 0
+  let failedImageReason = ''
+  let inlineFallbackCount = 0
+  let inlineFallbackReason = ''
+
+  for (const [index, file] of files.entries()) {
+    try {
+      const storedImage = await saveImageFile(file)
+      const safeUrl = await getAssetUrl(storedImage.filePath)
+      const metadata = buildImageInsertMetadata(storedImage.filePath)
+      const attrs = {
+        src: safeUrl,
+        alt: createFileLabel(file, `image-${index + 1}`),
+        title: createFileLabel(file, `image-${index + 1}`),
+        mediaFileName: metadata.fileName,
+        mediaOrigin: metadata.mediaOrigin,
+        mediaRelativePath: metadata.mediaRelativePath,
+      }
+      const imageNode = editor.state.schema.nodes.image.create(attrs)
+
+      if (typeof position === 'number') {
+        editor
+          .chain()
+          .focus()
+          .setTextSelection(position)
+          .insertContent({
+            type: 'image',
+            attrs,
+          })
+          .run()
+
+        position += imageNode.nodeSize
+      } else {
+        editor
+          .chain()
+          .focus()
+          .insertContent({
+            type: 'image',
+            attrs,
+          })
+          .run()
+      }
+
+      if (storedImage.persistence === 'inline-fallback') {
+        inlineFallbackCount += 1
+        if (!inlineFallbackReason && storedImage.fallbackReason) {
+          inlineFallbackReason = storedImage.fallbackReason
+        }
+      }
+    } catch (error) {
+      console.error('Failed to insert image into editor.', error)
+      failedImageCount += 1
+      if (!failedImageReason) {
+        failedImageReason = error instanceof Error ? error.message : String(error)
+      }
+    }
+  }
+
+  return {
+    didInsertImages: true,
+    failedImageCount,
+    failedImageReason,
+    inlineFallbackCount,
+    inlineFallbackReason,
+  }
 }
 
 async function insertAttachmentFiles(editor, files, attachmentCopy, insertPosition = null) {
-  if (!editor || files.length === 0 || !isTauriRuntime) return false
+  if (!editor || files.length === 0 || !isTauriRuntime) {
+    return {
+      didInsertAttachments: false,
+      failedAttachmentCount: 0,
+      failedAttachmentReason: '',
+    }
+  }
 
   if (typeof insertPosition === 'number') {
     editor.chain().focus().setTextSelection(insertPosition).run()
   } else {
     editor.chain().focus().run()
   }
+
+  let insertedAttachmentCount = 0
+  let failedAttachmentCount = 0
+  let failedAttachmentReason = ''
 
   for (const [index, file] of files.entries()) {
     try {
@@ -250,12 +318,37 @@ async function insertAttachmentFiles(editor, files, attachmentCopy, insertPositi
           },
         })
         .run()
+      insertedAttachmentCount += 1
     } catch (error) {
       console.warn('Failed to insert local attachment into editor.', error)
+      failedAttachmentCount += 1
+      if (!failedAttachmentReason) {
+        failedAttachmentReason = error instanceof Error ? error.message : String(error)
+      }
     }
   }
 
-  return true
+  return {
+    didInsertAttachments: insertedAttachmentCount > 0,
+    failedAttachmentCount,
+    failedAttachmentReason,
+  }
+}
+
+function emitEditorSnapshot(editor, onChange, extra = {}) {
+  if (!editor) return null
+
+  const snapshot = {
+    html: editor.getHTML(),
+    text: editor.getText(),
+    ...extra,
+  }
+
+  if (typeof onChange === 'function') {
+    onChange(snapshot)
+  }
+
+  return snapshot
 }
 
 function ToolbarButton({ icon: Icon, label, isActive, action }) {
@@ -559,7 +652,7 @@ function createMentionSuggestion(blocks, copy) {
   }
 }
 
-export function FluxEditor({ initialContent = '', onChange, onEditorReady }) {
+export function FluxEditor({ initialContent = '', onChange, onEditorReady, onMediaInserted }) {
   const { t } = useTranslation()
   const fluxBlocks = useFluxStore((state) => state.fluxBlocks)
   const copy = useMemo(
@@ -591,7 +684,7 @@ export function FluxEditor({ initialContent = '', onChange, onEditorReady }) {
       TaskList,
       TaskItem.configure({ nested: true }),
       NativeImage.configure({
-        allowBase64: !isTauriRuntime,
+        allowBase64: true,
         HTMLAttributes: {
           class: 'flux-editor-image',
         },
@@ -622,7 +715,7 @@ export function FluxEditor({ initialContent = '', onChange, onEditorReady }) {
       attributes: {
         class: 'tiptap min-h-[420px] max-w-none px-1 py-2',
       },
-      handlePaste: (_view, event) => {
+      handlePaste: (view, event) => {
         const files = extractPasteFiles(event)
         if (files.length === 0) return false
 
@@ -632,17 +725,44 @@ export function FluxEditor({ initialContent = '', onChange, onEditorReady }) {
 
         event.preventDefault()
         void (async () => {
+          let imageInsertResult = {
+            didInsertImages: false,
+            failedImageCount: 0,
+            failedImageReason: '',
+            inlineFallbackCount: 0,
+            inlineFallbackReason: '',
+          }
+          let attachmentInsertResult = {
+            didInsertAttachments: false,
+            failedAttachmentCount: 0,
+            failedAttachmentReason: '',
+          }
+
           if (imageFiles.length) {
-            await insertImageFiles(editor, imageFiles)
+            imageInsertResult = await insertImageFiles(editor, imageFiles)
           }
 
           if (attachmentFiles.length && isTauriRuntime) {
-            await insertAttachmentFiles(editor, attachmentFiles, attachmentCopy)
+            attachmentInsertResult = await insertAttachmentFiles(editor, attachmentFiles, attachmentCopy)
           }
+
+          const snapshot = emitEditorSnapshot(editor, onChange, {
+            failedAttachmentCount: attachmentInsertResult.failedAttachmentCount,
+            failedAttachmentReason: attachmentInsertResult.failedAttachmentReason,
+            failedImageCount: imageInsertResult.failedImageCount,
+            failedImageReason: imageInsertResult.failedImageReason,
+            inlineFallbackCount: imageInsertResult.inlineFallbackCount,
+            inlineFallbackReason: imageInsertResult.inlineFallbackReason,
+          })
+          onMediaInserted?.(snapshot)
         })()
         return true
       },
-      handleDrop: (view, event) => {
+      handleDrop: (view, event, _slice, moved) => {
+        if (!shouldHandleExternalFileDrop(view, event, moved)) {
+          return false
+        }
+
         const files = extractDropFiles(event)
         if (files.length === 0) return false
 
@@ -657,13 +777,36 @@ export function FluxEditor({ initialContent = '', onChange, onEditorReady }) {
 
         void (async () => {
           const position = dropPosition?.pos ?? null
+          let imageInsertResult = {
+            didInsertImages: false,
+            failedImageCount: 0,
+            failedImageReason: '',
+            inlineFallbackCount: 0,
+            inlineFallbackReason: '',
+          }
+          let attachmentInsertResult = {
+            didInsertAttachments: false,
+            failedAttachmentCount: 0,
+            failedAttachmentReason: '',
+          }
+
           if (imageFiles.length) {
-            await insertImageFiles(editor, imageFiles, position)
+            imageInsertResult = await insertImageFiles(editor, imageFiles, position)
           }
 
           if (attachmentFiles.length && isTauriRuntime) {
-            await insertAttachmentFiles(editor, attachmentFiles, attachmentCopy, position)
+            attachmentInsertResult = await insertAttachmentFiles(editor, attachmentFiles, attachmentCopy, position)
           }
+
+          const snapshot = emitEditorSnapshot(editor, onChange, {
+            failedAttachmentCount: attachmentInsertResult.failedAttachmentCount,
+            failedAttachmentReason: attachmentInsertResult.failedAttachmentReason,
+            failedImageCount: imageInsertResult.failedImageCount,
+            failedImageReason: imageInsertResult.failedImageReason,
+            inlineFallbackCount: imageInsertResult.inlineFallbackCount,
+            inlineFallbackReason: imageInsertResult.inlineFallbackReason,
+          })
+          onMediaInserted?.(snapshot)
         })()
         return true
       },

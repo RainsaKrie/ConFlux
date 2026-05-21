@@ -109,6 +109,13 @@ export function contentToPlainText(content = '') {
     .trim()
 }
 
+export function hasMeaningfulBlockContent(content = '') {
+  if (!content) return false
+  if (contentToPlainText(content).trim()) return true
+
+  return /<(img|attachment-card)\b/i.test(content)
+}
+
 export function extractBlockRelations(content = '') {
   const relations = []
   const seen = new Set()

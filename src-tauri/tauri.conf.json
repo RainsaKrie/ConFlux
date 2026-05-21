@@ -23,6 +23,13 @@
       }
     ],
     "security": {
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "$APPDATA/media",
+          "$APPDATA/media/*"
+        ]
+      },
       "csp": null
     }
   },

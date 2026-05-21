@@ -1,15 +1,24 @@
 import { NodeViewWrapper } from '@tiptap/react'
 import { ExternalLink, Paperclip } from 'lucide-react'
+import { isTauriRuntime, openNativeMedia } from '../../../features/media/localMediaService'
 
 export function NativeAttachmentNodeView({ node, selected }) {
   const attrs = node?.attrs ?? {}
   const fileName = attrs.fileName || 'Attachment'
   const href = attrs.href || ''
+  const mediaRelativePath = attrs.mediaRelativePath || ''
   const isMissing = attrs.mediaMissing === 'true' || attrs.mediaMissing === true
   const kickerLabel = attrs.kickerLabel || 'Local attachment'
   const openLabel = attrs.openLabel || 'Open file'
   const storedLabel = attrs.storedLabel || 'Stored locally'
   const unavailableLabel = attrs.unavailableLabel || 'Unavailable'
+  const shouldUseNativeOpen = isTauriRuntime && mediaRelativePath
+
+  const handleOpenNativeMedia = (event) => {
+    event.preventDefault()
+    event.stopPropagation()
+    void openNativeMedia(mediaRelativePath, href)
+  }
 
   return (
     <NodeViewWrapper
@@ -28,7 +37,17 @@ export function NativeAttachmentNodeView({ node, selected }) {
           </div>
         </div>
 
-        {href && !isMissing ? (
+        {href && !isMissing && shouldUseNativeOpen ? (
+          <button
+            type="button"
+            className="flux-attachment-action"
+            contentEditable={false}
+            onClick={handleOpenNativeMedia}
+          >
+            <ExternalLink size={12} strokeWidth={2} />
+            <span>{openLabel}</span>
+          </button>
+        ) : href && !isMissing ? (
           <a
             href={href}
             target="_blank"

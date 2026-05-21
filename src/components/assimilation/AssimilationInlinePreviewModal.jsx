@@ -47,7 +47,7 @@ export function AssimilationInlinePreviewModal({ preview, onApply, onCancel }) {
           </div>
 
           <div className="mt-4">
-            <div className="max-h-[60vh] overflow-y-auto rounded-xl border border-zinc-200/60 bg-zinc-50 p-6">
+            <div className="max-h-[60vh] overflow-y-auto zen-scrollbar rounded-xl border border-zinc-200/60 bg-zinc-50 p-6">
               <div
                 className="whitespace-pre-wrap break-words text-[15px] leading-8 [&_del]:rounded [&_del]:px-0.5 [&_ins]:rounded [&_ins]:px-0.5"
                 dangerouslySetInnerHTML={{ __html: inlineDiffHtml }}

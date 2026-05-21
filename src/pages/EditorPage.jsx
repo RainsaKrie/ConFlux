@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useRef, useState } from 'react'
-import { useCallback } from 'react'
+import { Suspense, lazy, useCallback } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Hash, Link, LoaderCircle, Orbit, Plus, Sparkles, X } from 'lucide-react'
 import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom'
@@ -10,11 +10,13 @@ import {
   buildRetagUserPrompt,
 } from '../ai/prompts'
 import { AssimilationInlinePreviewModal } from '../components/assimilation/AssimilationInlinePreviewModal'
-import { EditorToolbar, FluxEditor } from '../components/editor/FluxEditor'
 import { PeekDrawer } from '../components/editor/PeekDrawer'
 import { extractOutlineFromEditor } from '../features/editor/outline'
 import { getCollapsedHeadingPositions } from '../components/editor/extensions/FoldingExtension'
-import { cleanupUnusedNativeMedia } from '../features/media/localMediaService'
+import {
+  cleanupUnusedNativeMedia,
+  collectActiveMediaReferenceHtmlList,
+} from '../features/media/localMediaService'
 import {
   buildContextRecommendationEngine,
   buildDrawerSummary,
@@ -37,6 +39,7 @@ import {
   buildBlockId,
   contentToPlainText,
   getTodayStamp,
+  hasMeaningfulBlockContent,
   normalizeBlockDimensions,
   withBlockDimensionFallbacks,
 } from '../utils/blocks'
@@ -72,6 +75,17 @@ const dimensionStyles = {
   source: 'border border-emerald-100 bg-emerald-50 text-emerald-700',
 }
 const MotionSection = motion.section
+const LazyEditorSurface = lazy(() =>
+  import('../components/editor/EditorSurface').then((module) => ({ default: module.EditorSurface })),
+)
+
+function EditorSurfaceLoadingState() {
+  return (
+    <div className="rounded-[28px] border border-zinc-200/70 bg-white/70 px-5 py-8 text-sm text-zinc-400">
+      Loading editor...
+    </div>
+  )
+}
 
 function extractJsonObject(text = '') {
   const fenced = text.match(/```json\s*([\s\S]*?)```/i)
@@ -138,6 +152,27 @@ function shouldReplaceWithAiTitle(currentTitle, content, aiTitle) {
   return false
 }
 
+function extractLeadingAsciiConcept(content = '') {
+  const plainContent = contentToPlainText(content)
+  const firstLine = plainContent.split('\n')[0]?.trim() ?? ''
+  const matched = firstLine.match(/^[A-Za-z][A-Za-z0-9+.#_-]{1,30}\b/)
+
+  return matched?.[0] ?? ''
+}
+
+function refineAiTitle(currentTitle, content, aiTitle) {
+  const normalizedAiTitle = aiTitle?.trim() ?? ''
+  const leadingConcept = extractLeadingAsciiConcept(content)
+
+  if (!leadingConcept) return normalizedAiTitle
+  if (normalizedAiTitle.toLowerCase().includes(leadingConcept.toLowerCase())) return normalizedAiTitle
+
+  const normalizedCurrentTitle = currentTitle?.trim() ?? ''
+  if (normalizedCurrentTitle.toLowerCase() === leadingConcept.toLowerCase()) return normalizedCurrentTitle
+
+  return leadingConcept
+}
+
 function parseTagInputRoute(inputValue = '') {
   const trimmed = inputValue.trim()
   if (!trimmed) return null
@@ -168,6 +203,25 @@ function parseTagInputRoute(inputValue = '') {
   }
 }
 
+function formatMediaPersistenceReason(reason, t) {
+  const normalized = String(reason ?? '').replace(/\s+/g, ' ').trim()
+  if (!normalized) return ''
+
+  if (/access is denied|permission denied|eacces|eperm|forbidden/i.test(normalized)) {
+    return t('editor.inlineImageFallbackReasonPermission')
+  }
+
+  if (/no such file|cannot find|not found|enoent|missing/i.test(normalized)) {
+    return t('editor.inlineImageFallbackReasonPath')
+  }
+
+  if (/plugin|invoke|command|ipc|tauri/i.test(normalized)) {
+    return t('editor.inlineImageFallbackReasonRuntime')
+  }
+
+  return normalized.length > 140 ? `${normalized.slice(0, 137)}...` : normalized
+}
+
 export function EditorPage() {
   const { language, t } = useTranslation()
   const navigate = useNavigate()
@@ -175,6 +229,7 @@ export function EditorPage() {
   const setSidebarOutliner = outletContext.setSidebarOutliner
   const [searchParams] = useSearchParams()
   const [saveState, setSaveState] = useState(() => t('editor.saved'))
+  const [mediaPersistenceNotice, setMediaPersistenceNotice] = useState('')
   const [title, setTitle] = useState('')
   const [content, setContent] = useState('')
   const [isAddingTag, setIsAddingTag] = useState(false)
@@ -191,14 +246,20 @@ export function EditorPage() {
   const [collapsedHeadingPositions, setCollapsedHeadingPositions] = useState([])
   const titleSaveTimeoutRef = useRef(null)
   const contentSaveTimeoutRef = useRef(null)
+  const mediaNoticeTimeoutRef = useRef(null)
   const recommendationTimeoutRef = useRef(null)
   const vectorWarmupTimeoutRef = useRef(null)
   const outlineTimeoutRef = useRef(null)
+  const blockId = searchParams.get('id')
+  const latestDraftRef = useRef({
+    blockId: null,
+    content: '',
+    title: '',
+  })
+  const previousBlockIdRef = useRef(blockId)
   const sectionRef = useRef(null)
   const pendingCreatedIdRef = useRef(null)
   const aiEnrichedIdsRef = useRef(new Set())
-  const isHydratingRef = useRef(false)
-  const blockId = searchParams.get('id')
   const fluxBlocks = useFluxStore((state) => state.fluxBlocks)
   const addBlock = useFluxStore((state) => state.addBlock)
   const applyAssimilationRevision = useFluxStore((state) => state.applyAssimilationRevision)
@@ -311,20 +372,15 @@ export function EditorPage() {
         ? 'border-zinc-200/70 bg-white/90 text-zinc-500 hover:text-zinc-700'
         : 'border-indigo-200/70 bg-white/90 text-indigo-500 shadow-[0_10px_25px_rgba(99,102,241,0.08)] hover:text-indigo-600'
 
-  useEffect(
-    () => () => {
-      window.clearTimeout(titleSaveTimeoutRef.current)
-      window.clearTimeout(contentSaveTimeoutRef.current)
-      window.clearTimeout(recommendationTimeoutRef.current)
-      window.clearTimeout(vectorWarmupTimeoutRef.current)
-      window.clearTimeout(outlineTimeoutRef.current)
-      setPeekBlockId(null)
-    },
-    [setPeekBlockId],
-  )
+  useEffect(() => {
+    latestDraftRef.current = {
+      blockId,
+      content,
+      title,
+    }
+  }, [blockId, content, title])
 
   useEffect(() => {
-    isHydratingRef.current = true
     window.clearTimeout(titleSaveTimeoutRef.current)
     window.clearTimeout(contentSaveTimeoutRef.current)
     if (block?.id && pendingCreatedIdRef.current === block.id) {
@@ -337,6 +393,7 @@ export function EditorPage() {
     setContextRecommendation(null)
     setDrawerRecommendation(null)
     setDrawerSummary('')
+    setMediaPersistenceNotice('')
     setAssimilationPreview(null)
     setOutlineItems(extractOutlineFromEditor(editorInstance, block?.content ?? ''))
     setSaveState(t('editor.saved'))
@@ -371,7 +428,7 @@ export function EditorPage() {
 
       updateBlock(targetId, (old) => ({
         title: shouldReplaceWithAiTitle(old.title, old.content, aiTags.title)
-          ? aiTags.title.trim()
+          ? refineAiTitle(old.title, old.content, aiTags.title)
           : old.title,
         dimensions: withBlockDimensionFallbacks({
           ...normalizeBlockDimensions(old.dimensions),
@@ -387,13 +444,66 @@ export function EditorPage() {
     }
   }, [language, updateBlock])
 
-  const persistDocument = useCallback((nextTitle, nextContent) => {
+  const persistDocument = useCallback((nextTitle, nextContent, options = {}) => {
     const plainTitle = nextTitle.trim()
-    const plainContent = contentToPlainText(nextContent)
-    if (!plainTitle && !plainContent) {
-      setSaveState(t('editor.saved'))
+    const shouldNavigate = options.skipNavigate !== true
+    const skipStatusUpdate = options.skipStatusUpdate === true
+    if (!plainTitle && !hasMeaningfulBlockContent(nextContent)) {
+      if (!skipStatusUpdate) {
+        setSaveState(t('editor.saved'))
+      }
       return
     }
+
+    const activeBlockId = options.blockId ?? blockId ?? pendingCreatedIdRef.current
+    const timestamp = getTodayStamp()
+
+    if (activeBlockId) {
+      const previousContent = useFluxStore.getState().getBlockById(activeBlockId)?.content ?? ''
+
+      updateBlock(activeBlockId, () => ({
+        title: nextTitle,
+        content: nextContent,
+        updatedAt: timestamp,
+      }))
+
+      if (previousContent !== nextContent) {
+        const remainingHtmlList = collectActiveMediaReferenceHtmlList(useFluxStore.getState().fluxBlocks)
+
+        void cleanupUnusedNativeMedia(previousContent, remainingHtmlList)
+      }
+
+      if (!skipStatusUpdate) {
+        setSaveState(t('editor.saved'))
+      }
+      return
+    }
+
+    const newId = buildBlockId()
+    if (shouldNavigate) {
+      pendingCreatedIdRef.current = newId
+    }
+    addBlock({
+      id: newId,
+      title: nextTitle,
+      content: nextContent,
+      dimensions: withBlockDimensionFallbacks({
+        project: [],
+      }),
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    })
+    if (shouldNavigate) {
+      navigate(`/write?id=${newId}`, { replace: true })
+    }
+    void enrichBlockWithAi(newId, nextTitle, nextContent)
+    if (!skipStatusUpdate) {
+      setSaveState(t('editor.saved'))
+    }
+  }, [addBlock, blockId, enrichBlockWithAi, navigate, t, updateBlock])
+
+  const persistMediaSnapshot = useCallback((nextTitle, nextContent) => {
+    if (!nextContent?.trim()) return
 
     const activeBlockId = blockId || pendingCreatedIdRef.current
     const timestamp = getTodayStamp()
@@ -408,16 +518,12 @@ export function EditorPage() {
       }))
 
       if (previousContent !== nextContent) {
-        const remainingHtmlList = useFluxStore
-          .getState()
-          .fluxBlocks
-          .map((item) => item.content ?? '')
-
+        const remainingHtmlList = collectActiveMediaReferenceHtmlList(useFluxStore.getState().fluxBlocks)
         void cleanupUnusedNativeMedia(previousContent, remainingHtmlList)
       }
 
       setSaveState(t('editor.saved'))
-      return
+      return activeBlockId
     }
 
     const newId = buildBlockId()
@@ -435,7 +541,41 @@ export function EditorPage() {
     navigate(`/write?id=${newId}`, { replace: true })
     void enrichBlockWithAi(newId, nextTitle, nextContent)
     setSaveState(t('editor.saved'))
+    return newId
   }, [addBlock, blockId, enrichBlockWithAi, navigate, t, updateBlock])
+
+  const syncLatestDraftRef = useCallback((patch = {}) => {
+    latestDraftRef.current = {
+      blockId: patch.blockId ?? blockId ?? pendingCreatedIdRef.current ?? latestDraftRef.current.blockId ?? null,
+      content: patch.content ?? latestDraftRef.current.content ?? '',
+      title: patch.title ?? latestDraftRef.current.title ?? '',
+    }
+  }, [blockId])
+
+  const showMediaPersistenceNotice = useCallback((message) => {
+    setMediaPersistenceNotice(message)
+    window.clearTimeout(mediaNoticeTimeoutRef.current)
+    mediaNoticeTimeoutRef.current = window.setTimeout(() => {
+      setMediaPersistenceNotice('')
+    }, 6000)
+  }, [])
+
+  useEffect(
+    () => () => {
+      window.clearTimeout(titleSaveTimeoutRef.current)
+      window.clearTimeout(contentSaveTimeoutRef.current)
+      window.clearTimeout(mediaNoticeTimeoutRef.current)
+      window.clearTimeout(recommendationTimeoutRef.current)
+      window.clearTimeout(vectorWarmupTimeoutRef.current)
+      window.clearTimeout(outlineTimeoutRef.current)
+      setPeekBlockId(null)
+    },
+    [setPeekBlockId],
+  )
+
+  useEffect(() => {
+    previousBlockIdRef.current = blockId
+  }, [blockId])
 
   const handleRemoveDimension = (dimension, value) => {
     const activeBlockId = blockId || pendingCreatedIdRef.current
@@ -856,10 +996,6 @@ export function EditorPage() {
   }
 
   useEffect(() => {
-    if (isHydratingRef.current) {
-      return
-    }
-
     if (blockId && block && title === (block.title ?? '')) {
       setSaveState(t('editor.saved'))
       return
@@ -877,11 +1013,6 @@ export function EditorPage() {
   }, [block, blockId, content, persistDocument, t, title])
 
   useEffect(() => {
-    if (isHydratingRef.current) {
-      isHydratingRef.current = false
-      return
-    }
-
     if (blockId && block && content === (block.content ?? '')) {
       setSaveState(t('editor.saved'))
       return
@@ -975,8 +1106,6 @@ export function EditorPage() {
   }, [content, editorInstance, outlineItems])
 
   useEffect(() => {
-    if (isHydratingRef.current) return undefined
-
     let isCancelled = false
 
     window.clearTimeout(recommendationTimeoutRef.current)
@@ -1075,7 +1204,11 @@ export function EditorPage() {
           <input
             type="text"
             value={title}
-            onChange={(event) => setTitle(event.target.value)}
+            onChange={(event) => {
+              const nextTitle = event.target.value
+              syncLatestDraftRef({ title: nextTitle })
+              setTitle(nextTitle)
+            }}
             placeholder={t('editor.titlePlaceholder')}
             className="flux-title-input mb-4 w-full border-none bg-transparent outline-none"
           />
@@ -1206,19 +1339,62 @@ export function EditorPage() {
             </div>
           ) : null}
 
+          {mediaPersistenceNotice ? (
+            <div className="mb-4 rounded-2xl border border-amber-200/80 bg-amber-50/85 px-3 py-2 text-[12px] leading-5 text-amber-800">
+              {mediaPersistenceNotice}
+            </div>
+          ) : null}
+
           <div className="h-px w-full bg-zinc-100" />
         </div>
 
-        <EditorToolbar editor={editorInstance} />
+        <Suspense fallback={<EditorSurfaceLoadingState />}>
+          <LazyEditorSurface
+            activeDocumentKey={activeDocumentKey}
+            content={content}
+            editorInstance={editorInstance}
+            initialContent={content}
+            onEditorReady={setEditorInstance}
+            onChange={(nextValue) => {
+              syncLatestDraftRef({ content: nextValue.html })
+              setContent(nextValue.html)
+            }}
+            onMediaInserted={(nextValue) => {
+              if (!nextValue?.html) return
 
-        <FluxEditor
-          key={activeDocumentKey}
-          initialContent={block?.content ?? content}
-          onEditorReady={setEditorInstance}
-          onChange={(nextValue) => {
-            setContent(nextValue.html)
-          }}
-        />
+              syncLatestDraftRef({ content: nextValue.html, title })
+              setContent(nextValue.html)
+              persistMediaSnapshot(title, nextValue.html)
+
+              if (nextValue.inlineFallbackCount > 0) {
+                const normalizedReason = formatMediaPersistenceReason(nextValue.inlineFallbackReason, t)
+                showMediaPersistenceNotice(
+                  normalizedReason
+                    ? t('editor.inlineImageFallbackNoticeDetailed', {
+                      count: nextValue.inlineFallbackCount,
+                      reason: normalizedReason,
+                    })
+                    : t('editor.inlineImageFallbackNotice', {
+                      count: nextValue.inlineFallbackCount,
+                    }),
+                )
+              } else if ((nextValue.failedImageCount ?? 0) > 0 || (nextValue.failedAttachmentCount ?? 0) > 0) {
+                const failedCount = (nextValue.failedImageCount ?? 0) + (nextValue.failedAttachmentCount ?? 0)
+                const normalizedReason = formatMediaPersistenceReason(
+                  nextValue.failedAttachmentReason || nextValue.failedImageReason,
+                  t,
+                )
+
+                showMediaPersistenceNotice(
+                  t('editor.nativeMediaInsertFailed', {
+                    count: failedCount,
+                    reason: normalizedReason || t('editor.inlineImageFallbackReasonRuntime'),
+                  }),
+                )
+              }
+            }}
+          />
+        </Suspense>
       </MotionSection>
 
       <button

@@ -7,6 +7,7 @@ const ENV_DEFAULT_AI_CONFIG = {
 export const DEFAULT_AI_CONFIG = ENV_DEFAULT_AI_CONFIG
 
 export const AI_CONFIG_STORAGE_KEY = 'flux_ai_config'
+export const AI_CONFIG_UPDATED_EVENT = 'flux:ai-config-updated'
 
 export function readAiConfig() {
   if (typeof window === 'undefined') return DEFAULT_AI_CONFIG
@@ -29,6 +30,7 @@ export function readAiConfig() {
 export function saveAiConfig(config) {
   if (typeof window === 'undefined') return
   window.localStorage.setItem(AI_CONFIG_STORAGE_KEY, JSON.stringify(config))
+  window.dispatchEvent(new CustomEvent(AI_CONFIG_UPDATED_EVENT, { detail: config }))
 }
 
 export function isAiConfigReady(config) {
@@ -40,5 +42,32 @@ export function resolveChatCompletionsUrl(baseURL) {
   if (!resolvedBaseUrl) {
     throw new Error('Missing AI base URL')
   }
+  if (/\/chat\/completions$/i.test(resolvedBaseUrl)) {
+    return resolvedBaseUrl
+  }
   return `${resolvedBaseUrl}/chat/completions`
+}
+
+export function subscribeAiConfig(listener) {
+  if (typeof window === 'undefined') {
+    return () => {}
+  }
+
+  const notify = () => {
+    listener(readAiConfig())
+  }
+
+  const handleStorage = (event) => {
+    if (!event.key || event.key === AI_CONFIG_STORAGE_KEY) {
+      notify()
+    }
+  }
+
+  window.addEventListener('storage', handleStorage)
+  window.addEventListener(AI_CONFIG_UPDATED_EVENT, notify)
+
+  return () => {
+    window.removeEventListener('storage', handleStorage)
+    window.removeEventListener(AI_CONFIG_UPDATED_EVENT, notify)
+  }
 }
